@@ -8,7 +8,10 @@
     internal class ClassConfigurator : ITypeConfigurator, IClassConfigurator
     {
         private readonly List<IElementConfigurator> _elementConfigurator = new();
+        private readonly List<Type> _interfaces = new();
+        private readonly List<BeeAttribute> _attributes = new();
         private readonly ClassArguments _arguments = new();
+        private Type _parentType;
 
         public ClassConfigurator(string name, ClassAccessModifier accessModifier)
         {
@@ -35,7 +38,16 @@
         {
             _arguments.ValidateAndThrow();
 
-            var typeBuilder = assemblyContextBuilder.ModuleBuilder.DefineType(_arguments.Name, _arguments.AccessModifier);
+            var parentType = _parentType ?? typeof(object);
+            var typeBuilder = assemblyContextBuilder.ModuleBuilder.DefineType(
+                _arguments.Name,
+                _arguments.AccessModifier,
+                parentType,
+                _interfaces.ToArray());
+
+            foreach (var attribute in _attributes)
+                typeBuilder.SetCustomAttribute(attribute.Build());
+
             var typeBuilderContext = assemblyContextBuilder.AddTypeBuilder(_arguments.Name, typeBuilder);
 
             foreach (var elementConfigurator in _elementConfigurator)
@@ -47,7 +59,40 @@
         /// </summary>
         public IClassConfigurator WithParentType(Type parentType)
         {
-            _arguments.ParentType = parentType;
+            if (parentType == null)
+                throw new ArgumentNullException(nameof(parentType));
+
+            _parentType = parentType;
+            return this;
+        }
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
+        public IClassConfigurator Implements(Type interfaceType)
+        {
+            if (interfaceType == null)
+                throw new ArgumentNullException(nameof(interfaceType));
+
+            if (!interfaceType.IsInterface)
+                throw new ArgumentException("The provided type must be an interface.", nameof(interfaceType));
+
+            if (_interfaces.Contains(interfaceType))
+                return this;
+
+            _interfaces.Add(interfaceType);
+            return this;
+        }
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
+        public IClassConfigurator AddAttribute(BeeAttribute attribute)
+        {
+            if (attribute == null)
+                throw new ArgumentNullException(nameof(attribute));
+
+            _attributes.Add(attribute);
             return this;
         }
     }
