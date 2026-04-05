@@ -9,16 +9,18 @@
     public readonly struct ClassAccessModifier
     {
         private readonly TypeAttributes _attributes;
+        private readonly bool _isInitialized;
 
         private ClassAccessModifier(TypeAttributes attributes)
         {
             _attributes = attributes;
+            _isInitialized = true;
         }
 
         /// <summary>
         /// Gets whether this instance is uninitialized (equal to 'default').
         /// </summary>
-        public bool IsDefault => _attributes == 0;
+        public bool IsDefault => !_isInitialized;
 
         /// <summary>
         /// Implicitly converts a <see cref="ClassAccessModifier"/> to <see cref="TypeAttributes"/>.
@@ -33,7 +35,7 @@
         /// <param name="right">The second modifier.</param>
         /// <returns><c>true</c> if they represent the same access level; otherwise, <c>false</c>.</returns>
         public static bool operator ==(ClassAccessModifier left, ClassAccessModifier right)
-            => left._attributes == right._attributes;
+            => left._attributes == right._attributes && left._isInitialized == right._isInitialized;
 
         /// <summary>
         /// Indicates whether two <see cref="ClassAccessModifier"/> instances are not equal.
@@ -56,7 +58,7 @@
         /// Returns a hash code for the current modifier.
         /// </summary>
         public override int GetHashCode()
-            => _attributes.GetHashCode();
+            => HashCode.Combine(_attributes, _isInitialized);
 
         // ----------- Top-level class modifiers -----------
 

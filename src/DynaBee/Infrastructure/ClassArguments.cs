@@ -35,14 +35,6 @@
             set => Set(value);
         }
 
-        /// <summary>
-        /// Gets or sets the parent type (base class) for the dynamically generated class.
-        /// </summary>
-        public Type ParentType
-        {
-            get => Get<Type>();
-            set => Set(value);
-        }
     }
 
 }

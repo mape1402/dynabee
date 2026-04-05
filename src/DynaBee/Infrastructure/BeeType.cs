@@ -51,6 +51,32 @@
             => new BeeType(referenceType);
 
         /// <summary>
+        /// Creates a <see cref="BeeType"/> from a reference type name.
+        /// </summary>
+        /// <param name="referenceType">Logical name of another dynamic type.</param>
+        /// <returns>A reference-based <see cref="BeeType"/>.</returns>
+        public static BeeType Parse(string referenceType)
+            => new BeeType(referenceType);
+
+        /// <summary>
+        /// Tries to create a <see cref="BeeType"/> from a reference type name.
+        /// </summary>
+        /// <param name="referenceType">Logical name of another dynamic type.</param>
+        /// <param name="beeType">Resulting parsed value if successful.</param>
+        /// <returns><c>true</c> when parsing succeeds; otherwise, <c>false</c>.</returns>
+        public static bool TryParse(string referenceType, out BeeType beeType)
+        {
+            if (string.IsNullOrWhiteSpace(referenceType))
+            {
+                beeType = default;
+                return false;
+            }
+
+            beeType = new BeeType(referenceType);
+            return true;
+        }
+
+        /// <summary>
         /// Implicitly converts a <see cref="Type"/> to a <see cref="BeeType"/>.
         /// </summary>
         /// <param name="type">The <see cref="Type"/> to represent.</param>

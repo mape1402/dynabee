@@ -1,6 +1,7 @@
 ﻿namespace DynaBee.Infrastructure.ContextBuilders
 {
     using DynaBee.Infrastructure.Contexts;
+    using System.Reflection;
     using System.Reflection.Emit;
 
     /// <summary>
@@ -51,8 +52,13 @@
         /// </summary>
         public ITypeContext Build()
         {
-            var elementContexts = _elementContextBuilders.Values.Select(x => x.Build());
-            return new TypeContext(Name, TypeBuilder, elementContexts);
+            var orderedBuilders = _elementContextBuilders.Values
+                .OrderBy(x => x.Name.StartsWith(".ctor", StringComparison.Ordinal) ? 1 : 0)
+                .ToArray();
+
+            var elementContexts = orderedBuilders.Select(x => x.Build()).ToArray();
+            var clrType = TypeBuilder.CreateTypeInfo()?.AsType() ?? (Type)TypeBuilder;
+            return new TypeContext(Name, clrType, elementContexts);
         }
     }
 }

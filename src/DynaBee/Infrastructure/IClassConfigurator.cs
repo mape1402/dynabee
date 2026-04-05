@@ -16,5 +16,19 @@
         /// The current <see cref="IClassConfigurator"/> instance to allow fluent configuration.
         /// </returns>
         IClassConfigurator WithParentType(Type parentType);
+
+        /// <summary>
+        /// Adds an interface that the dynamic class must implement.
+        /// </summary>
+        /// <param name="interfaceType">Interface type to implement.</param>
+        /// <returns>The current configurator for fluent chaining.</returns>
+        IClassConfigurator Implements(Type interfaceType);
+
+        /// <summary>
+        /// Adds a custom attribute to the dynamic class.
+        /// </summary>
+        /// <param name="attribute">Attribute descriptor.</param>
+        /// <returns>The current configurator for fluent chaining.</returns>
+        IClassConfigurator AddAttribute(BeeAttribute attribute);
     }
 }
