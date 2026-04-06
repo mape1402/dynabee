@@ -6,7 +6,7 @@ on:
       - "main"
     paths: 
       - 'src/**'
-      - 'Pelican.sln'
+      - '*.sln'
       - 'Directory.Build.props'
       - 'CHANGELOG.md'
 
