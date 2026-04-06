@@ -105,6 +105,21 @@ namespace DynaBee.Infrastructure.Configurators
                 return;
             }
 
+            // Operator overloads (including string concatenation) are represented
+            // as binary expressions with an associated Method.
+            if (expression.Method != null)
+            {
+                EmitExpression(expression.Left, context);
+                EmitExpression(expression.Right, context);
+
+                var opcode = expression.Method.IsVirtual && !expression.Method.IsFinal && !expression.Method.DeclaringType!.IsValueType
+                    ? OpCodes.Callvirt
+                    : OpCodes.Call;
+
+                context.Il.Emit(opcode, expression.Method);
+                return;
+            }
+
             EmitExpression(expression.Left, context);
             EmitExpression(expression.Right, context);
 
