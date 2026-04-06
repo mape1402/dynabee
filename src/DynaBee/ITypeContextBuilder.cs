@@ -41,6 +41,13 @@
         IElementContextBuilder AddElement(string name, ElementType elementType, ElementBuilderAction buildAction);
 
         /// <summary>
+        /// Stores metadata in the current type builder context.
+        /// </summary>
+        /// <param name="key">Metadata key.</param>
+        /// <param name="value">Metadata value.</param>
+        void SetMetadata(string key, object value);
+
+        /// <summary>
         /// Finalizes the type context construction and returns an immutable <see cref="ITypeContext"/>
         /// representing the completed dynamic type definition.
         /// </summary>

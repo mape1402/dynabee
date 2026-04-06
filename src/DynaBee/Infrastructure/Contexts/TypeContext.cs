@@ -6,12 +6,18 @@
     internal class TypeContext : ITypeContext
     {
         private readonly Dictionary<string, IElementContext> _elementContexts;
+        private readonly Dictionary<string, object> _metadata;
 
-        public TypeContext(string name, Type clrType, IEnumerable<IElementContext> elementContexts)
+        public TypeContext(
+            string name,
+            Type clrType,
+            IEnumerable<IElementContext> elementContexts,
+            IDictionary<string, object> metadata = null)
         {
             Name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException(nameof(name)) : name;
             ClrType = clrType ?? throw new ArgumentNullException(nameof(clrType));
             _elementContexts = elementContexts == null ? throw new ArgumentNullException(nameof(elementContexts)) : elementContexts.ToDictionary(x => x.Name);
+            _metadata = metadata == null ? new Dictionary<string, object>() : new Dictionary<string, object>(metadata);
         }
 
         /// <summary>
@@ -40,5 +46,22 @@
         /// </summary>
         public IEnumerable<IElementContext> Find(Func<IElementContext, bool> predicate)
             => _elementContexts.Values.Where(predicate);
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
+        public object GetMetadata(string key)
+        {
+            if (!_metadata.ContainsKey(key))
+                throw new KeyNotFoundException($"Metadata with key '{key}' doesn't exist into dynamic type '{Name}'.");
+
+            return _metadata[key];
+        }
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
+        public bool TryGetMetadata(string key, out object value)
+            => _metadata.TryGetValue(key, out value);
     }
 }

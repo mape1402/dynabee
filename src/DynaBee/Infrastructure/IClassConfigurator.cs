@@ -21,8 +21,16 @@
         /// Adds an interface that the dynamic class must implement.
         /// </summary>
         /// <param name="interfaceType">Interface type to implement.</param>
+        /// <param name="registerInDi">True to register this interface in DI; otherwise false.</param>
         /// <returns>The current configurator for fluent chaining.</returns>
-        IClassConfigurator Implements(Type interfaceType);
+        IClassConfigurator Implements(Type interfaceType, bool registerInDi = true);
+
+        /// <summary>
+        /// Sets whether this dynamic class should be registered as its own concrete type in DI.
+        /// </summary>
+        /// <param name="register">True to register concrete type; false to skip it.</param>
+        /// <returns>The current configurator for fluent chaining.</returns>
+        IClassConfigurator RegisterAsConcrete(bool register = true);
 
         /// <summary>
         /// Adds a custom attribute to the dynamic class.

@@ -35,5 +35,20 @@
         /// An <see cref="IEnumerable{T}"/> containing all matching <see cref="IElementContext"/> instances.
         /// </returns>
         IEnumerable<IElementContext> Find(Func<IElementContext, bool> predicate);
+
+        /// <summary>
+        /// Gets metadata attached to this generated type.
+        /// </summary>
+        /// <param name="key">Metadata key.</param>
+        /// <returns>Metadata value.</returns>
+        object GetMetadata(string key);
+
+        /// <summary>
+        /// Tries to get metadata attached to this generated type.
+        /// </summary>
+        /// <param name="key">Metadata key.</param>
+        /// <param name="value">Metadata value when present.</param>
+        /// <returns><c>true</c> when metadata exists; otherwise <c>false</c>.</returns>
+        bool TryGetMetadata(string key, out object value);
     }
 }

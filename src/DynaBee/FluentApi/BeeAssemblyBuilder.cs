@@ -2,17 +2,57 @@ namespace DynaBee.FluentApi
 {
     using DynaBee.Infrastructure;
     using DynaBee.Infrastructure.Configurators;
+    using System.Collections.Concurrent;
 
     /// <summary>
     /// Fluent builder for a dynamic assembly.
     /// </summary>
     public sealed class BeeAssemblyBuilder
     {
+        private static readonly ConcurrentDictionary<string, IAssemblyContext> Cache = new(StringComparer.Ordinal);
+
         private readonly AssemblyConfigurator _assemblyConfigurator;
+        private readonly string _assemblyName;
+        private string _version = "latest";
+        private bool _cacheEnabled = true;
 
         internal BeeAssemblyBuilder(string assemblyName)
         {
-            _assemblyConfigurator = new AssemblyConfigurator(assemblyName);
+            _assemblyName = string.IsNullOrWhiteSpace(assemblyName)
+                ? throw new ArgumentException(nameof(assemblyName))
+                : assemblyName;
+
+            _assemblyConfigurator = new AssemblyConfigurator(_assemblyName);
+        }
+
+        /// <summary>
+        /// Sets a semantic version token for the generated assembly cache key.
+        /// </summary>
+        public BeeAssemblyBuilder WithVersion(string version)
+        {
+            _version = string.IsNullOrWhiteSpace(version)
+                ? throw new ArgumentException(nameof(version))
+                : version;
+
+            return this;
+        }
+
+        /// <summary>
+        /// Disables the in-memory cache for this build operation.
+        /// </summary>
+        public BeeAssemblyBuilder DisableCache()
+        {
+            _cacheEnabled = false;
+            return this;
+        }
+
+        /// <summary>
+        /// Enables the in-memory cache for this build operation.
+        /// </summary>
+        public BeeAssemblyBuilder EnableCache()
+        {
+            _cacheEnabled = true;
+            return this;
         }
 
         /// <summary>
@@ -118,6 +158,7 @@ namespace DynaBee.FluentApi
             var classBuilder = new BeeClassBuilder(classConfigurator);
             var recordBuilder = new BeeRecordClassBuilder(classBuilder);
             configure?.Invoke(recordBuilder);
+            recordBuilder.FinalizeRecord();
             _assemblyConfigurator.AddTypeBuilder(classConfigurator);
             return this;
         }
@@ -138,6 +179,7 @@ namespace DynaBee.FluentApi
             var structBuilder = new BeeStructBuilder(structConfigurator);
             var recordBuilder = new BeeRecordStructBuilder(structBuilder);
             configure?.Invoke(recordBuilder);
+            recordBuilder.FinalizeRecord();
             _assemblyConfigurator.AddTypeBuilder(structConfigurator);
             return this;
         }
@@ -147,6 +189,12 @@ namespace DynaBee.FluentApi
         /// </summary>
         /// <returns>Built assembly context and generated types.</returns>
         public IAssemblyContext Build()
-            => _assemblyConfigurator.Configure().Build();
+        {
+            if (!_cacheEnabled)
+                return _assemblyConfigurator.Configure().Build();
+
+            var key = $"{_assemblyName}::{_version}";
+            return Cache.GetOrAdd(key, _ => _assemblyConfigurator.Configure().Build());
+        }
     }
 }

@@ -10,6 +10,7 @@
     internal sealed class TypeContextBuilder : ITypeContextBuilder
     {
         private readonly Dictionary<string, IElementContextBuilder> _elementContextBuilders = new();
+        private readonly Dictionary<string, object> _metadata = new();
 
         public TypeContextBuilder(string name, TypeBuilder typeBuilder, IAssemblyContextBuilder assemblyBuilderContext)
         {
@@ -50,6 +51,17 @@
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
+        public void SetMetadata(string key, object value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new ArgumentException(nameof(key));
+
+            _metadata[key] = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
         public ITypeContext Build()
         {
             var orderedBuilders = _elementContextBuilders.Values
@@ -58,7 +70,7 @@
 
             var elementContexts = orderedBuilders.Select(x => x.Build()).ToArray();
             var clrType = TypeBuilder.CreateTypeInfo()?.AsType() ?? (Type)TypeBuilder;
-            return new TypeContext(Name, clrType, elementContexts);
+            return new TypeContext(Name, clrType, elementContexts, _metadata);
         }
     }
 }
