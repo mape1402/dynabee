@@ -1,10 +1,13 @@
 namespace DynaBee.Tests.FluentApi
 {
     using NSubstitute;
+    using Microsoft.Extensions.DependencyInjection;
     using System.Linq.Expressions;
     using System.Reflection;
     using System.Reflection.Emit;
     using global::DynaBee.FluentApi;
+    using global::DynaBee.FluentApi.DependencyInjection;
+    using global::DynaBee.FluentApi.Diagnostics;
     using global::DynaBee.Infrastructure;
     using Xunit;
 
@@ -258,6 +261,167 @@ namespace DynaBee.Tests.FluentApi
         }
 
         [Fact]
+        public void Build_Record_Semantics_Provides_Equals_HashCode_ToString_And_Deconstruct()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.RecordSemantics")
+                .AddRecordClass("OrderRecord", r => r
+                    .AddComponent<int>("Id")
+                    .AddComponent<string>("Code"))
+                .Build();
+
+            var type = context.GetClrType("OrderRecord");
+            var left = Activator.CreateInstance(type)!;
+            var right = Activator.CreateInstance(type)!;
+
+            type.GetProperty("Id")!.SetValue(left, 7);
+            type.GetProperty("Code")!.SetValue(left, "A");
+
+            type.GetProperty("Id")!.SetValue(right, 7);
+            type.GetProperty("Code")!.SetValue(right, "A");
+
+            Assert.True((bool)type.GetMethod("Equals", new[] { typeof(object) })!.Invoke(left, new[] { right })!);
+            Assert.Equal(
+                (int)type.GetMethod("GetHashCode", Type.EmptyTypes)!.Invoke(left, null)!,
+                (int)type.GetMethod("GetHashCode", Type.EmptyTypes)!.Invoke(right, null)!);
+
+            var toString = (string)type.GetMethod("ToString", Type.EmptyTypes)!.Invoke(left, null)!;
+            Assert.Contains("OrderRecord", toString);
+            Assert.Contains("Id = 7", toString);
+            Assert.Contains("Code = A", toString);
+
+            var args = new object[] { 0, string.Empty };
+            type.GetMethod("Deconstruct")!.Invoke(left, args);
+            Assert.Equal(7, (int)args[0]);
+            Assert.Equal("A", (string)args[1]);
+        }
+
+        [Fact]
+        public void Build_With_Version_Uses_Cache_And_Different_Version_Creates_New_Assembly()
+        {
+            var first = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Cache")
+                .WithVersion("1.0.0")
+                .AddClass("A", c => c.AddAutoProperty<int>("Id"))
+                .Build();
+
+            var second = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Cache")
+                .WithVersion("1.0.0")
+                .AddClass("A", c => c.AddAutoProperty<int>("Id"))
+                .Build();
+
+            var third = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Cache")
+                .WithVersion("2.0.0")
+                .AddClass("A", c => c.AddAutoProperty<int>("Id"))
+                .Build();
+
+            Assert.Same(first.Assembly, second.Assembly);
+            Assert.NotSame(first.Assembly, third.Assembly);
+        }
+
+        [Fact]
+        public void Diagnostics_Can_Be_Serialized_To_Json()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Diagnostics")
+                .AddClass("DiagnosticEntity", c => c
+                    .AddProperty<string>("Name")
+                    .AddMethod("GetName", typeof(string), m => m
+                        .EmitsInjectedLambda<string, string>("Name", x => x)))
+                .Build();
+
+            var diagnostics = context.GetDiagnostics();
+            var json = context.ToDiagnosticsJson();
+
+            Assert.Equal("Dynabee.Fluent.Tests.Diagnostics", diagnostics.Name);
+            Assert.Contains("DiagnosticEntity", json);
+            Assert.Contains("GetName", json);
+            Assert.Contains("Name", json);
+        }
+
+        [Fact]
+        public void AddDynaBee_Registers_Generated_Types_In_DI()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.DI")
+                .AddClass("InvoiceService", c => c
+                    .Implements<IInvoiceService>()
+                    .Inject<IUnitOfWork>("UnitOfWork")
+                    .AddMethod("Commit", typeof(int), m => m
+                        .EmitsInjectedLambda<IUnitOfWork, int>("UnitOfWork", db => db.SaveChanges())))
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddSingleton<IUnitOfWork>(new TestUnitOfWork(11));
+            services.AddDynaBee(context, ServiceLifetime.Transient);
+
+            var provider = services.BuildServiceProvider();
+            var service = provider.GetRequiredService<IInvoiceService>();
+            var rows = service.Commit();
+
+            Assert.Equal(11, rows);
+        }
+
+        [Fact]
+        public void AddDynaBee_Can_Skip_Interface_Registrations()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.DI.SkipInterfaces")
+                .AddClass("InvoiceService", c => c
+                    .Implements<IInvoiceService>(registerInDi: false)
+                    .Inject<IUnitOfWork>("UnitOfWork")
+                    .AddMethod("Commit", typeof(int), m => m
+                        .EmitsInjectedLambda<IUnitOfWork, int>("UnitOfWork", db => db.SaveChanges())))
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddSingleton<IUnitOfWork>(new TestUnitOfWork(13));
+            services.AddDynaBee(context, ServiceLifetime.Transient);
+
+            var provider = services.BuildServiceProvider();
+
+            Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IInvoiceService>());
+
+            var implementationType = context.GetClrType("InvoiceService");
+            var concrete = provider.GetRequiredService(implementationType);
+            var rows = (int)implementationType.GetMethod("Commit")!.Invoke(concrete, null)!;
+
+            Assert.Equal(13, rows);
+        }
+
+        [Fact]
+        public void AddDynaBee_Can_Register_Only_Selected_Interfaces_And_Skip_Concrete_Type()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.DI.FilterInterfaces")
+                .AddClass("InvoiceService", c => c
+                    .Implements<IInvoiceService>(registerInDi: true)
+                    .Implements<IHasUnitOfWork>(registerInDi: false)
+                    .RegisterAsConcrete(false)
+                    .Inject<IUnitOfWork>("UnitOfWork")
+                    .AddMethod("Commit", typeof(int), m => m
+                        .EmitsInjectedLambda<IUnitOfWork, int>("UnitOfWork", db => db.SaveChanges())))
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddSingleton<IUnitOfWork>(new TestUnitOfWork(17));
+            services.AddDynaBee(context, ServiceLifetime.Transient);
+
+            var provider = services.BuildServiceProvider();
+            var invoiceService = provider.GetRequiredService<IInvoiceService>();
+            var rows = invoiceService.Commit();
+
+            Assert.Equal(17, rows);
+            var implementationType = context.GetClrType("InvoiceService");
+            Assert.Contains(typeof(IInvoiceService), implementationType.GetInterfaces());
+            Assert.Contains(typeof(IHasUnitOfWork), implementationType.GetInterfaces());
+            Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IHasUnitOfWork>());
+            Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService(implementationType));
+        }
+
+        [Fact]
         public void Build_Class_That_Implements_Interface_Works()
         {
             var context = DynaBeeBuilder
@@ -468,6 +632,18 @@ namespace DynaBee.Tests.FluentApi
             }
 
             public string Prefix { get; }
+        }
+
+        private sealed class TestUnitOfWork : IUnitOfWork
+        {
+            private readonly int _result;
+
+            public TestUnitOfWork(int result)
+            {
+                _result = result;
+            }
+
+            public int SaveChanges() => _result;
         }
 
         [AttributeUsage(AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Method)]

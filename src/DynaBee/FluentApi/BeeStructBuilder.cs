@@ -1,5 +1,6 @@
 namespace DynaBee.FluentApi
 {
+    using DynaBee;
     using DynaBee.Infrastructure;
     using DynaBee.Infrastructure.Configurators;
 
@@ -68,5 +69,11 @@ namespace DynaBee.FluentApi
 
         public BeeStructBuilder AddVoidMethod(string name, Action<BeeMethodBuilder> configure = null)
             => AddMethod(name, typeof(void), configure);
+
+        internal BeeStructBuilder AddElementConfigurator(IElementConfigurator configurator)
+        {
+            _configurator.AddElementBuilder(configurator);
+            return this;
+        }
     }
 }

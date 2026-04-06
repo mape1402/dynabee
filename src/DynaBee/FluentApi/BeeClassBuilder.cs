@@ -1,5 +1,6 @@
 namespace DynaBee.FluentApi
 {
+    using DynaBee;
     using DynaBee.Infrastructure;
     using DynaBee.Infrastructure.Configurators;
 
@@ -35,17 +36,26 @@ namespace DynaBee.FluentApi
         /// <summary>
         /// Adds an interface implementation.
         /// </summary>
-        public BeeClassBuilder Implements(Type interfaceType)
+        public BeeClassBuilder Implements(Type interfaceType, bool registerInDi = true)
         {
-            _classConfigurator.Implements(interfaceType);
+            _classConfigurator.Implements(interfaceType, registerInDi);
             return this;
         }
 
         /// <summary>
         /// Adds an interface implementation.
         /// </summary>
-        public BeeClassBuilder Implements<TInterface>()
-            => Implements(typeof(TInterface));
+        public BeeClassBuilder Implements<TInterface>(bool registerInDi = true)
+            => Implements(typeof(TInterface), registerInDi);
+
+        /// <summary>
+        /// Sets whether this dynamic class is registered as concrete type in DI.
+        /// </summary>
+        public BeeClassBuilder RegisterAsConcrete(bool register = true)
+        {
+            _classConfigurator.RegisterAsConcrete(register);
+            return this;
+        }
 
         /// <summary>
         /// Adds a custom attribute to the generated class.
@@ -274,6 +284,12 @@ namespace DynaBee.FluentApi
                 return propertyName.ToLowerInvariant();
 
             return char.ToLowerInvariant(propertyName[0]) + propertyName.Substring(1);
+        }
+
+        internal BeeClassBuilder AddElementConfigurator(IElementConfigurator configurator)
+        {
+            _classConfigurator.AddElementBuilder(configurator);
+            return this;
         }
     }
 }

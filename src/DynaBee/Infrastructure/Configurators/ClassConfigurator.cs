@@ -1,5 +1,6 @@
-﻿namespace DynaBee.Infrastructure.Configurators
+namespace DynaBee.Infrastructure.Configurators
 {
+    using DynaBee.FluentApi.DependencyInjection;
     using DynaBee.Infrastructure;
 
     /// <summary>
@@ -9,9 +10,11 @@
     {
         private readonly List<IElementConfigurator> _elementConfigurator = new();
         private readonly List<Type> _interfaces = new();
+        private readonly Dictionary<Type, bool> _interfaceRegistrations = new();
         private readonly List<BeeAttribute> _attributes = new();
         private readonly ClassArguments _arguments = new();
         private Type _parentType;
+        private bool _registerAsConcrete = true;
 
         public ClassConfigurator(string name, ClassAccessModifier accessModifier)
         {
@@ -49,6 +52,10 @@
                 typeBuilder.SetCustomAttribute(attribute.Build());
 
             var typeBuilderContext = assemblyContextBuilder.AddTypeBuilder(_arguments.Name, typeBuilder);
+            typeBuilderContext.SetMetadata(BeeDiMetadataKeys.RegisterAsConcrete, _registerAsConcrete);
+            typeBuilderContext.SetMetadata(
+                BeeDiMetadataKeys.InterfaceRegistrations,
+                new Dictionary<Type, bool>(_interfaceRegistrations));
 
             foreach (var elementConfigurator in _elementConfigurator)
                 elementConfigurator.Configure(typeBuilderContext);
@@ -69,7 +76,7 @@
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
-        public IClassConfigurator Implements(Type interfaceType)
+        public IClassConfigurator Implements(Type interfaceType, bool registerInDi = true)
         {
             if (interfaceType == null)
                 throw new ArgumentNullException(nameof(interfaceType));
@@ -78,9 +85,22 @@
                 throw new ArgumentException("The provided type must be an interface.", nameof(interfaceType));
 
             if (_interfaces.Contains(interfaceType))
+            {
+                _interfaceRegistrations[interfaceType] = registerInDi;
                 return this;
+            }
 
             _interfaces.Add(interfaceType);
+            _interfaceRegistrations[interfaceType] = registerInDi;
+            return this;
+        }
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
+        public IClassConfigurator RegisterAsConcrete(bool register = true)
+        {
+            _registerAsConcrete = register;
             return this;
         }
 
