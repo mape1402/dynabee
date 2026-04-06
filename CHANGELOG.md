@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [unreleased] 
+## [v1.0.1] - 2026-04-05
+
+### Fixed
+- Fixed invalid IL emission in expression-based methods when binary expressions use overloaded operators (for example `string` concatenation and `decimal` arithmetic).
+- `EmitsExpression(...)` now emits a method call to the operator implementation when `BinaryExpression.Method` is present, instead of always emitting raw arithmetic opcodes.
+- Added regression coverage for expression-based string concatenation to prevent `InvalidProgramException`/runtime IL failures in real usage.
 
 ## [v1.0.0] - 2026-04-05
 

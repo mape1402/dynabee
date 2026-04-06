@@ -555,6 +555,24 @@ namespace DynaBee.Tests.FluentApi
         }
 
         [Fact]
+        public void Build_Method_From_Expression_With_String_Concat_Works()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Expressions.StringConcat")
+                .AddClass("Greeter", c => c
+                    .AddMethod("SayHello", typeof(string), m => m
+                        .WithParameter<string>("target")
+                        .EmitsExpression((Expression<Func<string, string>>)(target => "Hello " + target))))
+                .Build();
+
+            var type = context.GetClrType("Greeter");
+            var instance = Activator.CreateInstance(type);
+            var result = (string)type.GetMethod("SayHello")!.Invoke(instance, new object[] { "DynaBee" })!;
+
+            Assert.Equal("Hello DynaBee", result);
+        }
+
+        [Fact]
         public void Build_Class_With_Injected_Dependency_And_Call_Dependency_Method_Works()
         {
             var setUnitOfWork = typeof(IHasUnitOfWork).GetProperty(nameof(IHasUnitOfWork.UnitOfWork))!.SetMethod!;
