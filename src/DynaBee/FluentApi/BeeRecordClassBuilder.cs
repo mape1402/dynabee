@@ -16,12 +16,23 @@ namespace DynaBee.FluentApi
             _classBuilder = classBuilder ?? throw new ArgumentNullException(nameof(classBuilder));
         }
 
+        /// <summary>
+        /// Adds an interface implementation to the generated record class.
+        /// </summary>
+        /// <typeparam name="TInterface">Interface type.</typeparam>
+        /// <returns>The current builder instance.</returns>
         public BeeRecordClassBuilder Implements<TInterface>()
         {
             _classBuilder.Implements<TInterface>();
             return this;
         }
 
+        /// <summary>
+        /// Adds a custom attribute to the generated record class.
+        /// </summary>
+        /// <typeparam name="TAttribute">Attribute type.</typeparam>
+        /// <param name="configure">Attribute configuration callback.</param>
+        /// <returns>The current builder instance.</returns>
         public BeeRecordClassBuilder AddAttribute<TAttribute>(Action<BeeAttributeBuilder> configure)
             where TAttribute : Attribute
         {
@@ -29,6 +40,12 @@ namespace DynaBee.FluentApi
             return this;
         }
 
+        /// <summary>
+        /// Adds a record component as a public property.
+        /// </summary>
+        /// <param name="name">Component name.</param>
+        /// <param name="type">Component type.</param>
+        /// <returns>The current builder instance.</returns>
         public BeeRecordClassBuilder AddComponent(string name, BeeType type)
         {
             _classBuilder.AddProperty(name, type, p => p
@@ -41,9 +58,22 @@ namespace DynaBee.FluentApi
             return this;
         }
 
+        /// <summary>
+        /// Adds a record component as a public property.
+        /// </summary>
+        /// <typeparam name="T">Component type.</typeparam>
+        /// <param name="name">Component name.</param>
+        /// <returns>The current builder instance.</returns>
         public BeeRecordClassBuilder AddComponent<T>(string name)
             => AddComponent(name, typeof(T));
 
+        /// <summary>
+        /// Adds a method to the generated record class.
+        /// </summary>
+        /// <param name="name">Method name.</param>
+        /// <param name="returnType">Method return type.</param>
+        /// <param name="configure">Optional method configuration callback.</param>
+        /// <returns>The current builder instance.</returns>
         public BeeRecordClassBuilder AddMethod(string name, BeeType returnType, Action<BeeMethodBuilder> configure = null)
         {
             _classBuilder.AddMethod(name, returnType, configure);
