@@ -16,6 +16,7 @@
         private readonly MethodAccessModifier _getterAccessModifier;
         private readonly MethodAccessModifier _setterAccessModifier;
         private readonly IReadOnlyCollection<BeeAttribute> _attributes;
+        private readonly IReadOnlyDictionary<string, object> _metadata;
 
         public PropertyConfigurator(
             string name,
@@ -25,7 +26,8 @@
             FieldAccessModifier fieldAccessModifier = default,
             MethodAccessModifier getterAccessModifier = default,
             MethodAccessModifier setterAccessModifier = default,
-            IReadOnlyCollection<BeeAttribute> attributes = null)
+            IReadOnlyCollection<BeeAttribute> attributes = null,
+            IReadOnlyDictionary<string, object> metadata = null)
         {
             _name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException(nameof(name)) : name;
             _beeType = type;
@@ -35,6 +37,7 @@
             _getterAccessModifier = getterAccessModifier;
             _setterAccessModifier = setterAccessModifier;
             _attributes = attributes ?? Array.Empty<BeeAttribute>();
+            _metadata = metadata ?? new Dictionary<string, object>();
 
             if (!_hasGetter && !_hasSetter)
                 throw new ArgumentException("A property must define at least a getter or a setter.");
@@ -45,7 +48,7 @@
         /// </summary>
         public void Configure(ITypeContextBuilder typeContextBuilder)
         {
-            typeContextBuilder.AddElement(_name, ElementType.Property, BuildAction);
+            typeContextBuilder.AddElement(_name, ElementType.Property, BuildAction, _metadata);
         }
 
         private void BuildAction(ITypeContextBuilder typeContextBuilder)

@@ -58,6 +58,21 @@ namespace DynaBee.FluentApi
         }
 
         /// <summary>
+        /// Stores metadata for this generated class.
+        /// </summary>
+        public BeeClassBuilder WithMetadata(string key, object value)
+        {
+            _classConfigurator.WithMetadata(key, value);
+            return this;
+        }
+
+        /// <summary>
+        /// Stores strongly typed metadata for this generated class.
+        /// </summary>
+        public BeeClassBuilder WithMetadata<T>(BeeMetadataKey<T> key, T value)
+            => WithMetadata(key.Name, value);
+
+        /// <summary>
         /// Adds a custom attribute to the generated class.
         /// </summary>
         public BeeClassBuilder AddAttribute(BeeAttribute attribute)

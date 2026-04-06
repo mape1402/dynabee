@@ -33,6 +33,14 @@
         IClassConfigurator RegisterAsConcrete(bool register = true);
 
         /// <summary>
+        /// Stores metadata for the generated class context.
+        /// </summary>
+        /// <param name="key">Metadata key.</param>
+        /// <param name="value">Metadata value.</param>
+        /// <returns>The current configurator for fluent chaining.</returns>
+        IClassConfigurator WithMetadata(string key, object value);
+
+        /// <summary>
         /// Adds a custom attribute to the dynamic class.
         /// </summary>
         /// <param name="attribute">Attribute descriptor.</param>

@@ -12,6 +12,7 @@ namespace DynaBee.Infrastructure.Configurators
         private readonly List<Type> _interfaces = new();
         private readonly Dictionary<Type, bool> _interfaceRegistrations = new();
         private readonly List<BeeAttribute> _attributes = new();
+        private readonly Dictionary<string, object> _metadata = new();
         private readonly ClassArguments _arguments = new();
         private Type _parentType;
         private bool _registerAsConcrete = true;
@@ -52,10 +53,11 @@ namespace DynaBee.Infrastructure.Configurators
                 typeBuilder.SetCustomAttribute(attribute.Build());
 
             var typeBuilderContext = assemblyContextBuilder.AddTypeBuilder(_arguments.Name, typeBuilder);
+            foreach (var metadata in _metadata)
+                typeBuilderContext.SetMetadata(metadata.Key, metadata.Value);
+
             typeBuilderContext.SetMetadata(BeeDiMetadataKeys.RegisterAsConcrete, _registerAsConcrete);
-            typeBuilderContext.SetMetadata(
-                BeeDiMetadataKeys.InterfaceRegistrations,
-                new Dictionary<Type, bool>(_interfaceRegistrations));
+            typeBuilderContext.SetMetadata(BeeDiMetadataKeys.InterfaceRegistrations, new Dictionary<Type, bool>(_interfaceRegistrations));
 
             foreach (var elementConfigurator in _elementConfigurator)
                 elementConfigurator.Configure(typeBuilderContext);
@@ -101,6 +103,18 @@ namespace DynaBee.Infrastructure.Configurators
         public IClassConfigurator RegisterAsConcrete(bool register = true)
         {
             _registerAsConcrete = register;
+            return this;
+        }
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
+        public IClassConfigurator WithMetadata(string key, object value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new ArgumentException(nameof(key));
+
+            _metadata[key] = value ?? throw new ArgumentNullException(nameof(value));
             return this;
         }
 

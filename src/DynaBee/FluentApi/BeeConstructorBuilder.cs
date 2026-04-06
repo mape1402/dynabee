@@ -10,6 +10,7 @@ namespace DynaBee.FluentApi
     public sealed class BeeConstructorBuilder
     {
         private readonly List<(string Name, BeeType Type)> _parameters = new();
+        private readonly Dictionary<string, object> _metadata = new();
         private Action<ILGenerator> _body;
 
         /// <summary>
@@ -39,7 +40,25 @@ namespace DynaBee.FluentApi
             return this;
         }
 
+        /// <summary>
+        /// Stores metadata for this generated constructor.
+        /// </summary>
+        public BeeConstructorBuilder WithMetadata(string key, object value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new ArgumentException(nameof(key));
+
+            _metadata[key] = value ?? throw new ArgumentNullException(nameof(value));
+            return this;
+        }
+
+        /// <summary>
+        /// Stores strongly typed metadata for this generated constructor.
+        /// </summary>
+        public BeeConstructorBuilder WithMetadata<T>(BeeMetadataKey<T> key, T value)
+            => WithMetadata(key.Name, value);
+
         internal ConstructorConfigurator ToConfigurator()
-            => new ConstructorConfigurator(_parameters, _body);
+            => new ConstructorConfigurator(_parameters, _body, _metadata);
     }
 }

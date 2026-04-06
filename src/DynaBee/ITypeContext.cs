@@ -50,5 +50,14 @@
         /// <param name="value">Metadata value when present.</param>
         /// <returns><c>true</c> when metadata exists; otherwise <c>false</c>.</returns>
         bool TryGetMetadata(string key, out object value);
+
+        /// <summary>
+        /// Tries to get strongly typed metadata attached to this generated type.
+        /// </summary>
+        /// <typeparam name="T">Metadata value type.</typeparam>
+        /// <param name="key">Typed metadata key.</param>
+        /// <param name="value">Typed metadata value when present.</param>
+        /// <returns><c>true</c> when metadata exists and can be cast to <typeparamref name="T"/>.</returns>
+        bool TryGetMetadata<T>(BeeMetadataKey<T> key, out T value);
     }
 }

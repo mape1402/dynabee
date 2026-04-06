@@ -12,6 +12,7 @@ namespace DynaBee.FluentApi
     {
         private readonly List<(string Name, BeeType Type)> _parameters = new();
         private readonly List<BeeAttribute> _attributes = new();
+        private readonly Dictionary<string, object> _metadata = new();
         private Action<ILGenerator> _body;
         private Delegate _lambdaBody;
         private LambdaExpression _expressionBody;
@@ -191,7 +192,25 @@ namespace DynaBee.FluentApi
                 lambdaBody(DynamicAccess.GetProperty<TDependency>(self, dependencyProperty), arg1)));
         }
 
+        /// <summary>
+        /// Stores metadata for this generated method.
+        /// </summary>
+        public BeeMethodBuilder WithMetadata(string key, object value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new ArgumentException(nameof(key));
+
+            _metadata[key] = value ?? throw new ArgumentNullException(nameof(value));
+            return this;
+        }
+
+        /// <summary>
+        /// Stores strongly typed metadata for this generated method.
+        /// </summary>
+        public BeeMethodBuilder WithMetadata<T>(BeeMetadataKey<T> key, T value)
+            => WithMetadata(key.Name, value);
+
         internal MethodConfigurator ToConfigurator()
-            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _lambdaBody, _expressionBody, _isStatic, _accessModifier, _attributes);
+            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _lambdaBody, _expressionBody, _isStatic, _accessModifier, _attributes, _metadata);
     }
 }

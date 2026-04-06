@@ -5,6 +5,7 @@ namespace DynaBee.Tests.FluentApi
     using System.Linq.Expressions;
     using System.Reflection;
     using System.Reflection.Emit;
+    using global::DynaBee;
     using global::DynaBee.FluentApi;
     using global::DynaBee.FluentApi.DependencyInjection;
     using global::DynaBee.FluentApi.Diagnostics;
@@ -339,6 +340,48 @@ namespace DynaBee.Tests.FluentApi
             Assert.Contains("DiagnosticEntity", json);
             Assert.Contains("GetName", json);
             Assert.Contains("Name", json);
+        }
+
+        [Fact]
+        public void Metadata_Can_Be_Stored_And_Extracted_From_Type_And_Elements()
+        {
+            var tableNameKey = new BeeMetadataKey<string>("ef:table:name");
+            var columnNameKey = new BeeMetadataKey<string>("ef:column:name");
+            var dbTypeKey = new BeeMetadataKey<string>("ef:column:dbtype");
+            var methodTagKey = new BeeMetadataKey<string>("ext:method:tag");
+            var ctorModeKey = new BeeMetadataKey<string>("ext:ctor:mode");
+
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Metadata")
+                .AddClass("ProductEntity", c => c
+                    .WithMetadata(tableNameKey, "products")
+                    .AddProperty<string>("Name", p => p
+                        .WithMetadata(columnNameKey, "product_name")
+                        .WithMetadata(dbTypeKey, "nvarchar(150)"))
+                    .AddMethod("Normalize", typeof(string), m => m
+                        .WithMetadata(methodTagKey, "transform")
+                        .EmitsExpression((Expression<Func<string>>)(() => "ok")))
+                    .AddConstructor(ctor => ctor
+                        .WithMetadata(ctorModeKey, "public-default")))
+                .Build();
+
+            var typeContext = context.Find("ProductEntity");
+            Assert.True(typeContext.TryGetMetadata(tableNameKey, out string tableName));
+            Assert.Equal("products", tableName);
+
+            var propertyContext = typeContext.FindOne("Name");
+            Assert.True(propertyContext.TryGetMetadata(columnNameKey, out string columnName));
+            Assert.True(propertyContext.TryGetMetadata(dbTypeKey, out string dbType));
+            Assert.Equal("product_name", columnName);
+            Assert.Equal("nvarchar(150)", dbType);
+
+            var methodContext = typeContext.FindOne("Normalize");
+            Assert.True(methodContext.TryGetMetadata(methodTagKey, out string methodTag));
+            Assert.Equal("transform", methodTag);
+
+            var ctorContext = typeContext.FindOne(".ctor:0");
+            Assert.True(ctorContext.TryGetMetadata(ctorModeKey, out string ctorMode));
+            Assert.Equal("public-default", ctorMode);
         }
 
         [Fact]
