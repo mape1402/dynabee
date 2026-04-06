@@ -15,6 +15,7 @@ namespace DynaBee.Infrastructure.Configurators
         private readonly bool _isStatic;
         private readonly MethodAccessModifier _accessModifier;
         private readonly IReadOnlyCollection<BeeAttribute> _attributes;
+        private readonly IReadOnlyDictionary<string, object> _metadata;
 
         public MethodConfigurator(
             string name,
@@ -25,7 +26,8 @@ namespace DynaBee.Infrastructure.Configurators
             LambdaExpression expressionBody,
             bool isStatic,
             MethodAccessModifier accessModifier,
-            IReadOnlyCollection<BeeAttribute> attributes)
+            IReadOnlyCollection<BeeAttribute> attributes,
+            IReadOnlyDictionary<string, object> metadata = null)
         {
             _name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException(nameof(name)) : name;
             _returnType = returnType;
@@ -36,6 +38,7 @@ namespace DynaBee.Infrastructure.Configurators
             _isStatic = isStatic;
             _accessModifier = accessModifier;
             _attributes = attributes ?? Array.Empty<BeeAttribute>();
+            _metadata = metadata ?? new Dictionary<string, object>();
         }
 
         public void Configure(ITypeContextBuilder typeContextBuilder)
@@ -43,7 +46,7 @@ namespace DynaBee.Infrastructure.Configurators
             if (typeContextBuilder == null)
                 throw new ArgumentNullException(nameof(typeContextBuilder));
 
-            typeContextBuilder.AddElement(_name, ElementType.Method, x => BuildAction(x));
+            typeContextBuilder.AddElement(_name, ElementType.Method, x => BuildAction(x), _metadata);
         }
 
         private void BuildAction(ITypeContextBuilder typeContextBuilder)

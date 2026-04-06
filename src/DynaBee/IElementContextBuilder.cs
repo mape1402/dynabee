@@ -22,6 +22,13 @@
         ElementType ElementType { get; }
 
         /// <summary>
+        /// Stores metadata in the current element builder context.
+        /// </summary>
+        /// <param name="key">Metadata key.</param>
+        /// <param name="value">Metadata value.</param>
+        void SetMetadata(string key, object value);
+
+        /// <summary>
         /// Finalizes the element context construction and returns an immutable <see cref="IElementContext"/>
         /// representing the completed element definition.
         /// </summary>

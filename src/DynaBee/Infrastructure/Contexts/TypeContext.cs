@@ -63,5 +63,22 @@
         /// </summary>
         public bool TryGetMetadata(string key, out object value)
             => _metadata.TryGetValue(key, out value);
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
+        public bool TryGetMetadata<T>(BeeMetadataKey<T> key, out T value)
+        {
+            value = default;
+
+            if (string.IsNullOrWhiteSpace(key.Name))
+                return false;
+
+            if (!_metadata.TryGetValue(key.Name, out var rawValue) || rawValue is not T typedValue)
+                return false;
+
+            value = typedValue;
+            return true;
+        }
     }
 }

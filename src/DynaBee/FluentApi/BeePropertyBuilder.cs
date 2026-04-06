@@ -9,6 +9,7 @@ namespace DynaBee.FluentApi
     public sealed class BeePropertyBuilder
     {
         private readonly List<BeeAttribute> _attributes = new();
+        private readonly Dictionary<string, object> _metadata = new();
 
         internal BeePropertyBuilder(string name, BeeType type)
         {
@@ -146,6 +147,24 @@ namespace DynaBee.FluentApi
             return AddAttribute(builder.Build());
         }
 
+        /// <summary>
+        /// Stores metadata for this generated property.
+        /// </summary>
+        public BeePropertyBuilder WithMetadata(string key, object value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new ArgumentException(nameof(key));
+
+            _metadata[key] = value ?? throw new ArgumentNullException(nameof(value));
+            return this;
+        }
+
+        /// <summary>
+        /// Stores strongly typed metadata for this generated property.
+        /// </summary>
+        public BeePropertyBuilder WithMetadata<T>(BeeMetadataKey<T> key, T value)
+            => WithMetadata(key.Name, value);
+
         internal PropertyConfigurator ToConfigurator()
             => new(
                 Name,
@@ -155,6 +174,7 @@ namespace DynaBee.FluentApi
                 BackingFieldAccessModifier,
                 GetterAccessModifier,
                 SetterAccessModifier,
-                _attributes);
+                _attributes,
+                _metadata);
     }
 }

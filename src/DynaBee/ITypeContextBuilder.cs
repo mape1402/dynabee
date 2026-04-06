@@ -35,10 +35,17 @@
         /// <param name="buildAction">
         /// The action that defines how to configure or implement the element.
         /// </param>
+        /// <param name="metadata">
+        /// Optional metadata attached to the element context.
+        /// </param>
         /// <returns>
         /// An <see cref="IElementContextBuilder"/> for further configuration of the added element.
         /// </returns>
-        IElementContextBuilder AddElement(string name, ElementType elementType, ElementBuilderAction buildAction);
+        IElementContextBuilder AddElement(
+            string name,
+            ElementType elementType,
+            ElementBuilderAction buildAction,
+            IReadOnlyDictionary<string, object> metadata = null);
 
         /// <summary>
         /// Stores metadata in the current type builder context.

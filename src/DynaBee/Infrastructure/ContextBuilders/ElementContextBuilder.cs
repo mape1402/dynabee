@@ -8,13 +8,20 @@ namespace DynaBee.Infrastructure.ContextBuilders
     internal class ElementContextBuilder : IElementContextBuilder
     {
         private readonly ElementBuilderAction _buildAction;
+        private readonly Dictionary<string, object> _metadata;
 
-        public ElementContextBuilder(string name, ElementType elementType, ElementBuilderAction buildAction, ITypeContextBuilder typeContextBuilder)
+        public ElementContextBuilder(
+            string name,
+            ElementType elementType,
+            ElementBuilderAction buildAction,
+            ITypeContextBuilder typeContextBuilder,
+            IReadOnlyDictionary<string, object> metadata = null)
         {
             Name = string.IsNullOrEmpty(name) ? throw new ArgumentException(nameof(name)) : name;
             ElementType = elementType;
             _buildAction = buildAction ?? throw new ArgumentNullException(nameof(buildAction));
             TypeContextBuilder = typeContextBuilder ?? throw new ArgumentNullException(nameof(typeContextBuilder));
+            _metadata = metadata == null ? new Dictionary<string, object>() : new Dictionary<string, object>(metadata);
         }
 
         /// <summary>
@@ -35,11 +42,21 @@ namespace DynaBee.Infrastructure.ContextBuilders
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
+        public void SetMetadata(string key, object value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new ArgumentException(nameof(key));
+
+            _metadata[key] = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
         public IElementContext Build()
         {
-            //TODO: Get Element Metadata
             _buildAction(TypeContextBuilder);
-            return new ElementContext(Name, ElementType);
+            return new ElementContext(Name, ElementType, _metadata);
         }
     }
 }

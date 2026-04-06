@@ -37,12 +37,16 @@
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
-        public IElementContextBuilder AddElement(string name, ElementType elementType, ElementBuilderAction buildAction)
+        public IElementContextBuilder AddElement(
+            string name,
+            ElementType elementType,
+            ElementBuilderAction buildAction,
+            IReadOnlyDictionary<string, object> metadata = null)
         {
             if (_elementContextBuilders.ContainsKey(name))
                 throw new InvalidOperationException($"Element with name '{name}' already exists in dynamic type '{TypeBuilder.Name}'.");
 
-            var elementContextBuilder = new ElementContextBuilder(name, elementType, buildAction, this);
+            var elementContextBuilder = new ElementContextBuilder(name, elementType, buildAction, this, metadata);
             _elementContextBuilders.Add(name, elementContextBuilder);
 
             return elementContextBuilder;

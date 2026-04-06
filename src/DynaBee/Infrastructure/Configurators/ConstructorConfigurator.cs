@@ -7,13 +7,16 @@ namespace DynaBee.Infrastructure.Configurators
     {
         private readonly IReadOnlyList<(string Name, BeeType Type)> _parameters;
         private readonly Action<ILGenerator> _body;
+        private readonly IReadOnlyDictionary<string, object> _metadata;
 
         public ConstructorConfigurator(
             IReadOnlyList<(string Name, BeeType Type)> parameters,
-            Action<ILGenerator> body)
+            Action<ILGenerator> body,
+            IReadOnlyDictionary<string, object> metadata = null)
         {
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _body = body;
+            _metadata = metadata ?? new Dictionary<string, object>();
         }
 
         public void Configure(ITypeContextBuilder typeContextBuilder)
@@ -21,7 +24,7 @@ namespace DynaBee.Infrastructure.Configurators
             if (typeContextBuilder == null)
                 throw new ArgumentNullException(nameof(typeContextBuilder));
 
-            typeContextBuilder.AddElement($".ctor:{_parameters.Count}", ElementType.Method, x => BuildAction(x));
+            typeContextBuilder.AddElement($".ctor:{_parameters.Count}", ElementType.Method, x => BuildAction(x), _metadata);
         }
 
         private void BuildAction(ITypeContextBuilder typeContextBuilder)
