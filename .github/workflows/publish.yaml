@@ -5,8 +5,8 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
-      - '.github/workflows/publish.yml'
-      - 'Pelican.sln'
+      - '.github/workflows/publish.yaml'
+      - '*.sln'
       - 'Directory.Build.props'
   release:
     types: [published]
