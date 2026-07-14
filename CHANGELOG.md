@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.1.0] - 2026-07-13
+
+### Added
+- Added profile-based dynamic assembly configuration through `IDynaBeeProfile` and `DynaBeeProfile`.
+- Added `IBeeAssemblyBuilder` so profiles configure assemblies through an abstraction.
+- Added automatic profile discovery and grouping by profile assembly name via `AddDynaBeeProfiles(...)`.
+- Added `IAssemblyContextRegistry` and `IAssemblyContextProvider` for mutable runtime definitions with immutable context snapshots.
+- Added `IDynaBeeAssemblyCatalog` to resolve generated registries, providers, and contexts by logical assembly name.
+- Added `AddDynaBeeRegistry(...)` for explicit, backward-compatible registry setup with automatic initial DI registration.
+- Added a DI-friendly assembly builder factory abstraction.
+
+### Changed
+- `DynaBeeProfile` now pins each profile to a single logical assembly name, keeping all types declared by that profile grouped consistently.
+- README now documents automatic profile discovery, assembly grouping, registry usage, and existing direct builder compatibility.
+
+### Compatibility
+- Existing `DynaBeeBuilder.CreateAssembly(...)` and `services.AddDynaBee(...)` flows remain supported.
+- Existing per-interface DI registration metadata continues to be honored when generated types are registered.
+
 ## [v1.0.1] - 2026-04-05
 
 ### Fixed

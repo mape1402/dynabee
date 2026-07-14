@@ -95,6 +95,81 @@ services.AddSingleton<IUnitOfWork>(new UnitOfWork());
 services.AddDynaBee(context); // Respects fluent per-interface DI settings
 ```
 
+### 4) Profile-based registration with automatic discovery
+
+Profiles are the recommended way to organize dynamic types in larger applications.
+Each profile belongs to exactly one logical dynamic assembly. DynaBee can discover
+profiles automatically, group them by assembly name, build each assembly context,
+and register generated types in DI.
+
+```csharp
+using DynaBee.FluentApi;
+using DynaBee.FluentApi.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+using System.Linq.Expressions;
+
+var services = new ServiceCollection();
+
+services.AddDynaBeeProfiles(
+    ServiceLifetime.Transient,
+    typeof(SalesProfile).Assembly);
+
+var provider = services.BuildServiceProvider();
+var catalog = provider.GetRequiredService<IDynaBeeAssemblyCatalog>();
+
+var salesContext = catalog.GetContext("Demo.Sales");
+var calculator = provider.GetRequiredService<ICalculator>();
+var total = calculator.Sum(5, 3); // 8
+
+public sealed class SalesProfile : DynaBeeProfile
+{
+    public SalesProfile() : base("Demo.Sales")
+    {
+    }
+
+    public override void Configure(IBeeAssemblyBuilder builder)
+    {
+        builder.AddClass("Calculator", c => c
+            .Implements<ICalculator>(registerInDi: true)
+            .AddMethod(nameof(ICalculator.Sum), typeof(int), m => m
+                .WithParameter<int>("x")
+                .WithParameter<int>("y")
+                .EmitsExpression((Expression<Func<int, int, int>>)((x, y) => x + y))));
+    }
+}
+
+public interface ICalculator
+{
+    int Sum(int x, int y);
+}
+```
+
+### 5) Backward-compatible registry registration
+
+If you prefer explicit setup, `AddDynaBeeRegistry(...)` is still available.
+It creates a single mutable registry/provider pair for one logical dynamic assembly
+and registers the initial generated types automatically.
+
+```csharp
+using DynaBee.FluentApi.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+using System.Linq.Expressions;
+
+var services = new ServiceCollection();
+
+services.AddDynaBeeRegistry("Demo.Runtime", registry =>
+{
+    registry.Configure(builder => builder
+        .AddClass("Greeter", c => c
+            .AddMethod("SayHello", typeof(string), m => m
+                .WithParameter<string>("name")
+                .EmitsExpression((Expression<Func<string, string>>)(name => "Hello " + name)))));
+});
+
+var provider = services.BuildServiceProvider();
+var context = provider.GetRequiredService<IAssemblyContext>();
+```
+
 ## Real-World Use Cases
 
 ### 1) Plugin systems
@@ -117,6 +192,9 @@ Emit optimized execution paths for expression-based pipelines where reflection-o
 
 ### 7) Framework integrations via metadata
 Attach typed metadata in Fluent API, then consume it in external packages (for example EF mapping hints like table/column/type, custom serialization hints, validation hints).
+
+### 8) Metadata-driven EF or API model bootstrapping
+Use profiles to group dynamic entity definitions by logical assembly, then resolve the generated `IAssemblyContext` through `IDynaBeeAssemblyCatalog` while bootstrapping framework integrations.
 
 ## Benchmarks
 

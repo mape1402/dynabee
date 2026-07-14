@@ -7,7 +7,7 @@ namespace DynaBee.FluentApi
     /// <summary>
     /// Fluent builder for a dynamic assembly.
     /// </summary>
-    public sealed class BeeAssemblyBuilder
+    public sealed class BeeAssemblyBuilder : IBeeAssemblyBuilder
     {
         private static readonly ConcurrentDictionary<string, IAssemblyContext> Cache = new(StringComparer.Ordinal);
 
