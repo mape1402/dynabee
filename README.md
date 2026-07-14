@@ -15,8 +15,8 @@ It is designed for scenarios where you need to build classes, methods, propertie
 
 ## Requirements
 
-- .NET SDK 8.0+ recommended for development.
-- The library multi-targets: `net6.0`, `net7.0`, `net8.0`, and `net9.0`.
+- .NET SDK 10.0+ recommended for development.
+- The library multi-targets: `net8.0`, `net9.0`, and `net10.0`.
 
 ## Installation
 
