@@ -663,6 +663,93 @@ namespace DynaBee.Tests.FluentApi
             unitOfWork.Received(1).SaveChanges();
         }
 
+        [Fact]
+        public void Registry_And_Provider_Current_Can_AutoRefresh_Without_Explicit_Rebuild()
+        {
+            var registry = new AssemblyContextRegistry("Dynabee.Fluent.Tests.Registry.Provider");
+
+            registry.Configure(builder => builder
+                .AddClass("CalculatorV1", c => c
+                    .AddMethod("Value", typeof(int), m => m
+                        .EmitsExpression((Expression<Func<int>>)(() => 1)))));
+
+            var provider = new AssemblyContextProvider(registry);
+
+            var v1Type = provider.Current.GetClrType("CalculatorV1");
+            var snapshotV1 = provider.Current;
+            var v1Instance = Activator.CreateInstance(v1Type)!;
+            var v1Value = (int)v1Type.GetMethod("Value")!.Invoke(v1Instance, null)!;
+            Assert.Equal(1, v1Value);
+            Assert.Equal(0, provider.Generation);
+
+            registry.Configure(builder => builder
+                .AddClass("CalculatorV2", c => c
+                    .AddMethod("Value", typeof(int), m => m
+                        .EmitsExpression((Expression<Func<int>>)(() => 2)))));
+
+            var rebuilt = provider.Current;
+            Assert.Equal(1, provider.Generation);
+            Assert.NotNull(rebuilt.Find("CalculatorV2"));
+            Assert.NotSame(snapshotV1, rebuilt);
+            Assert.NotNull(rebuilt.Find("CalculatorV1"));
+        }
+
+        [Fact]
+        public void Registry_Can_Use_Profile_Definitions()
+        {
+            var registry = new AssemblyContextRegistry("Dynabee.Fluent.Tests.Registry.Profile");
+            registry.AddProfile<InvoiceProfile>();
+
+            var context = registry.BuildSnapshot();
+
+            var serviceType = context.GetClrType("InvoiceServiceFromProfile");
+            Assert.NotNull(serviceType.GetMethod("Commit"));
+            Assert.Contains(typeof(IInvoiceService), serviceType.GetInterfaces());
+        }
+
+        [Fact]
+        public void AddDynaBeeRegistry_Registers_Provider_And_Current_Context()
+        {
+            var services = new ServiceCollection();
+            services.AddDynaBeeRegistry("Dynabee.Fluent.Tests.Registry.DI", registry =>
+            {
+                registry.Configure(builder => builder
+                    .AddClass("FromRegistry", c => c
+                        .AddAutoProperty<int>("Id")));
+            });
+
+            var provider = services.BuildServiceProvider();
+            var contextProvider = provider.GetRequiredService<IAssemblyContextProvider>();
+            var context = provider.GetRequiredService<IAssemblyContext>();
+            var implementationType = context.GetClrType("FromRegistry");
+
+            Assert.Same(contextProvider.Current, context);
+            Assert.NotNull(context.Find("FromRegistry"));
+            Assert.NotNull(provider.GetRequiredService(implementationType));
+        }
+
+        [Fact]
+        public void AddDynaBeeProfiles_AutoDiscovers_And_Groups_Profiles_By_Assembly()
+        {
+            var services = new ServiceCollection();
+            services.AddDynaBeeProfiles(ServiceLifetime.Transient, typeof(FluentApiTests).Assembly);
+
+            var provider = services.BuildServiceProvider();
+            var catalog = provider.GetRequiredService<IDynaBeeAssemblyCatalog>();
+
+            Assert.Contains("Dynabee.Fluent.Tests.Registry.Profile", catalog.AssemblyNames);
+            Assert.Contains("Dynabee.Fluent.Tests.Auto.One", catalog.AssemblyNames);
+            Assert.Contains("Dynabee.Fluent.Tests.Auto.Two", catalog.AssemblyNames);
+
+            var firstContext = catalog.GetContext("Dynabee.Fluent.Tests.Auto.One");
+            var secondContext = catalog.GetContext("Dynabee.Fluent.Tests.Auto.Two");
+
+            Assert.NotNull(firstContext.Find("AutoOneService"));
+            Assert.Throws<KeyNotFoundException>(() => firstContext.Find("AutoTwoService"));
+            Assert.NotNull(secondContext.Find("AutoTwoService"));
+            Assert.Throws<KeyNotFoundException>(() => secondContext.Find("AutoOneService"));
+        }
+
         public interface ICalculator
         {
             string Name { get; set; }
@@ -705,6 +792,49 @@ namespace DynaBee.Tests.FluentApi
             }
 
             public int SaveChanges() => _result;
+        }
+
+        private sealed class InvoiceProfile : DynaBeeProfile
+        {
+            public InvoiceProfile() : base("Dynabee.Fluent.Tests.Registry.Profile")
+            {
+            }
+
+            public override void Configure(IBeeAssemblyBuilder builder)
+            {
+                builder.AddClass("InvoiceServiceFromProfile", c => c
+                    .Implements<IInvoiceService>()
+                    .AddMethod("Commit", typeof(int), m => m
+                        .EmitsExpression((Expression<Func<int>>)(() => 101))));
+            }
+        }
+
+        private sealed class AutoAssemblyOneProfile : DynaBeeProfile
+        {
+            public AutoAssemblyOneProfile() : base("Dynabee.Fluent.Tests.Auto.One")
+            {
+            }
+
+            public override void Configure(IBeeAssemblyBuilder builder)
+            {
+                builder.AddClass("AutoOneService", c => c
+                    .AddMethod("Ping", typeof(string), m => m
+                        .EmitsExpression((Expression<Func<string>>)(() => "one"))));
+            }
+        }
+
+        private sealed class AutoAssemblyTwoProfile : DynaBeeProfile
+        {
+            public AutoAssemblyTwoProfile() : base("Dynabee.Fluent.Tests.Auto.Two")
+            {
+            }
+
+            public override void Configure(IBeeAssemblyBuilder builder)
+            {
+                builder.AddClass("AutoTwoService", c => c
+                    .AddMethod("Ping", typeof(string), m => m
+                        .EmitsExpression((Expression<Func<string>>)(() => "two"))));
+            }
         }
 
         [AttributeUsage(AttributeTargets.Class | AttributeTargets.Property | AttributeTargets.Method)]
