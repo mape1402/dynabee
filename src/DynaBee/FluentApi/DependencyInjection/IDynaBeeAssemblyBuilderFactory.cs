@@ -9,7 +9,7 @@ namespace DynaBee.FluentApi.DependencyInjection
         /// Creates a new fluent assembly builder for the specified logical assembly name.
         /// </summary>
         /// <param name="assemblyName">Logical assembly name.</param>
-        /// <returns>A new <see cref="BeeAssemblyBuilder"/> instance.</returns>
-        BeeAssemblyBuilder Create(string assemblyName);
+        /// <returns>A new assembly builder abstraction.</returns>
+        IBeeAssemblyBuilder Create(string assemblyName);
     }
 }

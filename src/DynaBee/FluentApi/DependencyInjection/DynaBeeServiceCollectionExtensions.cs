@@ -23,7 +23,8 @@ namespace DynaBee.FluentApi.DependencyInjection
             if (services == null)
                 throw new ArgumentNullException(nameof(services));
 
-            services.AddSingleton<IDynaBeeAssemblyBuilderFactory, DynaBeeAssemblyBuilderFactory>();
+            var builderFactory = new DynaBeeAssemblyBuilderFactory();
+            services.AddSingleton<IDynaBeeAssemblyBuilderFactory>(builderFactory);
 
             var profiles = (assemblies == null || assemblies.Length == 0)
                 ? DynaBeeProfileDiscoveryExtensions.DiscoverProfilesFromCurrentAppDomain()
@@ -39,7 +40,7 @@ namespace DynaBee.FluentApi.DependencyInjection
 
             foreach (var group in groupedProfiles)
             {
-                var registry = new AssemblyContextRegistry(group.Key);
+                var registry = new AssemblyContextRegistry(group.Key, builderFactory);
                 foreach (var profile in group)
                     registry.AddProfile(profile);
 
@@ -76,9 +77,10 @@ namespace DynaBee.FluentApi.DependencyInjection
             if (services == null)
                 throw new ArgumentNullException(nameof(services));
 
-            services.AddSingleton<IDynaBeeAssemblyBuilderFactory, DynaBeeAssemblyBuilderFactory>();
+            var builderFactory = new DynaBeeAssemblyBuilderFactory();
+            services.AddSingleton<IDynaBeeAssemblyBuilderFactory>(builderFactory);
 
-            var registry = new AssemblyContextRegistry(assemblyName);
+            var registry = new AssemblyContextRegistry(assemblyName, builderFactory);
             configureRegistry?.Invoke(registry);
             var initialSnapshot = registry.BuildSnapshot();
 
@@ -107,9 +109,10 @@ namespace DynaBee.FluentApi.DependencyInjection
             if (configure == null)
                 throw new ArgumentNullException(nameof(configure));
 
-            services.AddSingleton<IDynaBeeAssemblyBuilderFactory, DynaBeeAssemblyBuilderFactory>();
+            var builderFactory = new DynaBeeAssemblyBuilderFactory();
+            services.AddSingleton<IDynaBeeAssemblyBuilderFactory>(builderFactory);
 
-            var builder = DynaBeeBuilder.CreateAssembly(assemblyName).WithVersion(version);
+            var builder = new BeeAssemblyBuilder(assemblyName).WithVersion(version);
             configure(builder);
             var context = builder.Build();
 

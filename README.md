@@ -4,6 +4,8 @@
 
 It is designed for scenarios where you need to build classes, methods, properties, and contracts programmatically, with a fluent API that is simple to use and easy to extend.
 
+The recommended application model is DI-first: define `DynaBeeProfile` classes, let DynaBee discover them, and resolve generated assembly contexts through `IDynaBeeAssemblyCatalog`.
+
 ## What It Solves
 
 - Runtime type generation without producing intermediate source code.
@@ -26,89 +28,74 @@ dotnet add package DynaBee
 
 ## Getting Started
 
-### 1) Simple class with property and method
+### 1) Define a profile
 
 ```csharp
 using DynaBee.FluentApi;
+using DynaBee.FluentApi.DependencyInjection;
 using System.Linq.Expressions;
 
-var context = DynaBeeBuilder
-    .CreateAssembly("Demo.Basic")
-    .AddClass("Person", c => c
-        .AddAutoProperty<string>("Name")
-        .AddMethod("SayHello", typeof(string), m => m
-            .WithParameter<string>("target")
-            .EmitsExpression((Expression<Func<string, string>>)(target => "Hello " + target))))
-    .Build();
+public sealed class SalesProfile : DynaBeeProfile
+{
+    public SalesProfile() : base("Demo.Sales")
+    {
+    }
 
-var personType = context.GetClrType("Person");
-var person = Activator.CreateInstance(personType)!;
-personType.GetProperty("Name")!.SetValue(person, "Mario");
-var msg = personType.GetMethod("SayHello")!.Invoke(person, new object[] { "DynaBee" });
-```
-
-### 2) Implement an interface
-
-```csharp
-using DynaBee.FluentApi;
-using System.Linq.Expressions;
-
-var context = DynaBeeBuilder
-    .CreateAssembly("Demo.Contracts")
-    .AddClass("Calculator", c => c
-        .Implements<ICalculator>()
-        .AddMethod("Sum", typeof(int), m => m
-            .WithParameter<int>("x")
-            .WithParameter<int>("y")
-            .EmitsExpression((Expression<Func<int, int, int>>)((x, y) => x + y))))
-    .Build();
-
-var calc = context.CreateInstance<ICalculator>("Calculator");
-var result = calc.Sum(3, 4); // 7
+    public override void Configure(IBeeAssemblyBuilder builder)
+    {
+        builder
+            .AddClass("Calculator", c => c
+                .Implements<ICalculator>(registerInDi: true)
+                .RegisterAsConcrete(false)
+                .AddMethod(nameof(ICalculator.Sum), typeof(int), m => m
+                    .WithParameter<int>("x")
+                    .WithParameter<int>("y")
+                    .EmitsExpression((Expression<Func<int, int, int>>)((x, y) => x + y))))
+            .AddClass("InvoiceService", c => c
+                .Implements<IInvoiceService>(registerInDi: true)
+                .Implements<IInternalContract>(registerInDi: false)
+                .RegisterAsConcrete(false)
+                .Inject<IUnitOfWork>("UnitOfWork")
+                .AddMethod(nameof(IInvoiceService.Commit), typeof(int), m => m
+                    .EmitsInjectedLambda<IUnitOfWork, int>("UnitOfWork", uow => uow.SaveChanges())));
+    }
+}
 
 public interface ICalculator
 {
     int Sum(int x, int y);
 }
+
+public interface IInvoiceService
+{
+    int Commit();
+}
+
+public interface IInternalContract
+{
+    string Hidden();
+}
+
+public interface IUnitOfWork
+{
+    int SaveChanges();
+}
 ```
 
-### 3) Dependency injection + per-interface registration control
-
-```csharp
-using DynaBee.FluentApi;
-using DynaBee.FluentApi.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection;
-
-var context = DynaBeeBuilder
-    .CreateAssembly("Demo.DI")
-    .AddClass("InvoiceService", c => c
-        .Implements<IInvoiceService>(registerInDi: true)
-        .Implements<IInternalContract>(registerInDi: false)
-        .RegisterAsConcrete(false)
-        .Inject<IUnitOfWork>("UnitOfWork")
-        .AddMethod("Commit", typeof(int), m => m
-            .EmitsInjectedLambda<IUnitOfWork, int>("UnitOfWork", uow => uow.SaveChanges())))
-    .Build();
-
-var services = new ServiceCollection();
-services.AddSingleton<IUnitOfWork>(new UnitOfWork());
-services.AddDynaBee(context); // Respects fluent per-interface DI settings
-```
-
-### 4) Profile-based registration with automatic discovery
+### 2) Register DynaBee through DI
 
 Profiles are the recommended way to organize dynamic types in larger applications.
-Each profile belongs to exactly one logical dynamic assembly. DynaBee can discover
-profiles automatically, group them by assembly name, build each assembly context,
-and register generated types in DI.
+Each profile belongs to exactly one logical dynamic assembly. DynaBee discovers
+profiles, groups them by assembly name, builds each assembly context, and registers
+generated types in DI.
 
 ```csharp
-using DynaBee.FluentApi;
 using DynaBee.FluentApi.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
-using System.Linq.Expressions;
 
 var services = new ServiceCollection();
+
+services.AddSingleton<IUnitOfWork>(new UnitOfWork());
 
 services.AddDynaBeeProfiles(
     ServiceLifetime.Transient,
@@ -119,36 +106,22 @@ var catalog = provider.GetRequiredService<IDynaBeeAssemblyCatalog>();
 
 var salesContext = catalog.GetContext("Demo.Sales");
 var calculator = provider.GetRequiredService<ICalculator>();
-var total = calculator.Sum(5, 3); // 8
+var invoiceService = provider.GetRequiredService<IInvoiceService>();
 
-public sealed class SalesProfile : DynaBeeProfile
+var total = calculator.Sum(5, 3);        // 8
+var rows = invoiceService.Commit();      // Calls IUnitOfWork.SaveChanges()
+
+public sealed class UnitOfWork : IUnitOfWork
 {
-    public SalesProfile() : base("Demo.Sales")
-    {
-    }
-
-    public override void Configure(IBeeAssemblyBuilder builder)
-    {
-        builder.AddClass("Calculator", c => c
-            .Implements<ICalculator>(registerInDi: true)
-            .AddMethod(nameof(ICalculator.Sum), typeof(int), m => m
-                .WithParameter<int>("x")
-                .WithParameter<int>("y")
-                .EmitsExpression((Expression<Func<int, int, int>>)((x, y) => x + y))));
-    }
-}
-
-public interface ICalculator
-{
-    int Sum(int x, int y);
+    public int SaveChanges() => 42;
 }
 ```
 
-### 5) Backward-compatible registry registration
+### 3) Explicit registry setup
 
-If you prefer explicit setup, `AddDynaBeeRegistry(...)` is still available.
-It creates a single mutable registry/provider pair for one logical dynamic assembly
-and registers the initial generated types automatically.
+If you prefer explicit setup, `AddDynaBeeRegistry(...)` creates a single
+mutable registry/provider pair for one logical dynamic assembly and registers
+the initial generated types automatically.
 
 ```csharp
 using DynaBee.FluentApi.DependencyInjection;
