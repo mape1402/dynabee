@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `DynaBeeProfile` now pins each profile to a single logical assembly name, keeping all types declared by that profile grouped consistently.
+- Removed `net6.0` and `net7.0` targets, and added `net10.0` support.
 - README now documents automatic profile discovery, assembly grouping, registry usage, and existing direct builder compatibility.
 
 ### Compatibility
