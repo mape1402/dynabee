@@ -6,7 +6,7 @@ namespace DynaBee.FluentApi.DependencyInjection
     public sealed class DynaBeeAssemblyBuilderFactory : IDynaBeeAssemblyBuilderFactory
     {
         /// <inheritdoc />
-        public BeeAssemblyBuilder Create(string assemblyName)
-            => DynaBeeBuilder.CreateAssembly(assemblyName);
+        public IBeeAssemblyBuilder Create(string assemblyName)
+            => new BeeAssemblyBuilder(assemblyName);
     }
 }

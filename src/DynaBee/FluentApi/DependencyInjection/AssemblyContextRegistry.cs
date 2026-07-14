@@ -8,6 +8,7 @@ namespace DynaBee.FluentApi.DependencyInjection
     public sealed class AssemblyContextRegistry : IAssemblyContextRegistry
     {
         private readonly object _sync = new();
+        private readonly IDynaBeeAssemblyBuilderFactory _builderFactory;
         private readonly List<Action<IBeeAssemblyBuilder>> _configurations = new();
         private readonly HashSet<Type> _registeredProfileTypes = new();
         private long _revision;
@@ -17,10 +18,22 @@ namespace DynaBee.FluentApi.DependencyInjection
         /// </summary>
         /// <param name="assemblyName">Logical assembly name for generated snapshots.</param>
         public AssemblyContextRegistry(string assemblyName)
+            : this(assemblyName, new DynaBeeAssemblyBuilderFactory())
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AssemblyContextRegistry"/> class.
+        /// </summary>
+        /// <param name="assemblyName">Logical assembly name for generated snapshots.</param>
+        /// <param name="builderFactory">Factory used to create assembly builders.</param>
+        public AssemblyContextRegistry(string assemblyName, IDynaBeeAssemblyBuilderFactory builderFactory)
         {
             AssemblyName = string.IsNullOrWhiteSpace(assemblyName)
                 ? throw new ArgumentException(nameof(assemblyName))
                 : assemblyName;
+
+            _builderFactory = builderFactory ?? throw new ArgumentNullException(nameof(builderFactory));
         }
 
         /// <inheritdoc />
@@ -79,8 +92,8 @@ namespace DynaBee.FluentApi.DependencyInjection
             lock (_sync)
                 snapshot = _configurations.ToArray();
 
-            var builder = DynaBeeBuilder
-                .CreateAssembly(AssemblyName)
+            var builder = _builderFactory
+                .Create(AssemblyName)
                 .DisableCache();
 
             foreach (var configure in snapshot)
