@@ -1,5 +1,6 @@
 namespace DynaBee.FluentApi
 {
+    using DynaBee.FluentApi.Body;
     using DynaBee.Infrastructure;
     using System.Linq.Expressions;
     using System.Reflection.Emit;
@@ -14,6 +15,7 @@ namespace DynaBee.FluentApi
         private readonly List<BeeAttribute> _attributes = new();
         private readonly Dictionary<string, object> _metadata = new();
         private Action<ILGenerator> _body;
+        private Action<IBeeMethodBodyBuilder> _methodBody;
         private Delegate _lambdaBody;
         private LambdaExpression _expressionBody;
         private bool _isStatic;
@@ -107,6 +109,19 @@ namespace DynaBee.FluentApi
         public BeeMethodBuilder Emits(Action<ILGenerator> body)
         {
             _body = body ?? throw new ArgumentNullException(nameof(body));
+            _methodBody = null;
+            _lambdaBody = null;
+            _expressionBody = null;
+            return this;
+        }
+
+        /// <summary>
+        /// Defines the method body using high-level DynaBee body builder operations.
+        /// </summary>
+        public BeeMethodBuilder EmitsBody(Action<IBeeMethodBodyBuilder> body)
+        {
+            _methodBody = body ?? throw new ArgumentNullException(nameof(body));
+            _body = null;
             _lambdaBody = null;
             _expressionBody = null;
             return this;
@@ -120,6 +135,7 @@ namespace DynaBee.FluentApi
         {
             _lambdaBody = lambdaBody ?? throw new ArgumentNullException(nameof(lambdaBody));
             _body = null;
+            _methodBody = null;
             _expressionBody = null;
             return this;
         }
@@ -149,6 +165,7 @@ namespace DynaBee.FluentApi
         {
             _expressionBody = expressionBody ?? throw new ArgumentNullException(nameof(expressionBody));
             _body = null;
+            _methodBody = null;
             _lambdaBody = null;
             return this;
         }
@@ -211,6 +228,6 @@ namespace DynaBee.FluentApi
             => WithMetadata(key.Name, value);
 
         internal MethodConfigurator ToConfigurator()
-            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _lambdaBody, _expressionBody, _isStatic, _accessModifier, _attributes, _metadata);
+            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _methodBody, _lambdaBody, _expressionBody, _isStatic, _accessModifier, _attributes, _metadata);
     }
 }

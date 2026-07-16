@@ -143,6 +143,56 @@ var provider = services.BuildServiceProvider();
 var context = provider.GetRequiredService<IAssemblyContext>();
 ```
 
+### 4) Method body builder for mapper generation
+
+`EmitsBody(...)` lets integrations build complete method bodies without using
+IL opcodes. It supports parameters, locals, object construction, instance/static
+property and field access, constants, default values, nullable checks, enum and
+numeric conversions, assignments, conditionals, and returns.
+
+```csharp
+using DynaBee.FluentApi;
+using DynaBee.FluentApi.DependencyInjection;
+using System.Linq.Expressions;
+
+public sealed class MappingProfile : DynaBeeProfile
+{
+    public MappingProfile() : base("Demo.Mapping")
+    {
+    }
+
+    public override void Configure(IBeeAssemblyBuilder builder)
+    {
+        builder.AddClass("UserMapper", c => c
+            .AddMethod("Map", typeof(UserDto), m => m
+                .WithParameter<User>("source")
+                .EmitsBody(body =>
+                {
+                    var source = body.Parameter<User>("source");
+                    var destination = body.DeclareLocal<UserDto>("destination");
+
+                    body.Assign(destination, body.New<UserDto>());
+                    body.Assign(
+                        body.Property(destination, nameof(UserDto.DisplayName)),
+                        body.Concat(
+                            body.Property(source, nameof(User.FirstName)),
+                            body.Constant(" "),
+                            body.Property(source, nameof(User.LastName))));
+                    body.Assign(
+                        body.Property(destination, nameof(UserDto.Total)),
+                        body.Convert<decimal>(body.Property(source, nameof(User.Total))));
+                    body.Assign(
+                        body.Property(destination, nameof(UserDto.Name)),
+                        body.If(
+                            body.IsNull(body.Property(source, nameof(User.Name))),
+                            body.Constant("Unknown"),
+                            body.Property(source, nameof(User.Name))));
+                    body.Return(destination);
+                }));
+    }
+}
+```
+
 ## Real-World Use Cases
 
 ### 1) Plugin systems

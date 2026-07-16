@@ -750,6 +750,206 @@ namespace DynaBee.Tests.FluentApi
             Assert.Throws<KeyNotFoundException>(() => secondContext.Find("AutoOneService"));
         }
 
+        [Fact]
+        public void EmitsBody_Can_Generate_Expression_Value_Mapper()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.ExpressionMapper")
+                .AddClass("UserMapper", c => c
+                    .AddMethod("Map", typeof(UserDto), m => m
+                        .WithParameter<User>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<User>("source");
+                            var destination = body.DeclareLocal<UserDto>("destination");
+
+                            body.Assign(destination, body.New<UserDto>());
+                            body.Assign(
+                                body.Property(destination, nameof(UserDto.DisplayName)),
+                                body.Concat(
+                                    body.Property(source, nameof(User.FirstName)),
+                                    body.Constant(" "),
+                                    body.Property(source, nameof(User.LastName))));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("UserMapper"))!;
+            var source = new User { FirstName = "Ada", LastName = "Lovelace" };
+            var result = (UserDto)mapper.GetType().GetMethod("Map")!.Invoke(mapper, new object[] { source })!;
+
+            Assert.Equal("Ada Lovelace", result.DisplayName);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Generate_Null_Substitute_Mapper()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.NullSubstituteMapper")
+                .AddClass("UserMapper", c => c
+                    .AddMethod("Map", typeof(UserDto), m => m
+                        .WithParameter<User>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<User>("source");
+                            var destination = body.DeclareLocal<UserDto>("destination");
+
+                            body.Assign(destination, body.New<UserDto>());
+                            body.Assign(
+                                body.Property(destination, nameof(UserDto.Name)),
+                                body.If(
+                                    body.IsNull(body.Property(source, nameof(User.Name))),
+                                    body.Constant("Unknown"),
+                                    body.Property(source, nameof(User.Name))));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("UserMapper"))!;
+            var result = (UserDto)mapper.GetType().GetMethod("Map")!.Invoke(mapper, new object[] { new User() })!;
+
+            Assert.Equal("Unknown", result.Name);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Generate_Numeric_Conversion_Mapper()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.NumericConversionMapper")
+                .AddClass("InvoiceMapper", c => c
+                    .AddMethod("Map", typeof(InvoiceDto), m => m
+                        .WithParameter<Invoice>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<Invoice>("source");
+                            var destination = body.DeclareLocal<InvoiceDto>("destination");
+
+                            body.Assign(destination, body.New<InvoiceDto>());
+                            body.Assign(
+                                body.Property(destination, nameof(InvoiceDto.Total)),
+                                body.Convert<decimal>(body.Property(source, nameof(Invoice.Total))));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("InvoiceMapper"))!;
+            var result = (InvoiceDto)mapper.GetType().GetMethod("Map")!.Invoke(mapper, new object[] { new Invoice { Total = 123.45d } })!;
+
+            Assert.Equal(123.45m, result.Total);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Generate_Multiple_Source_Mapper()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.MultipleSourceMapper")
+                .AddClass("OrderMapper", c => c
+                    .AddMethod("Map", typeof(OrderDto), m => m
+                        .WithParameter<Order>("source")
+                        .WithParameter<Customer>("customer")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<Order>("source");
+                            var customer = body.Parameter<Customer>("customer");
+                            var destination = body.DeclareLocal<OrderDto>("destination");
+
+                            body.Assign(destination, body.New<OrderDto>());
+                            body.Assign(body.Property(destination, nameof(OrderDto.OrderId)), body.Property(source, nameof(Order.Id)));
+                            body.Assign(body.Property(destination, nameof(OrderDto.CustomerName)), body.Property(customer, nameof(Customer.Name)));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("OrderMapper"))!;
+            var result = (OrderDto)mapper.GetType().GetMethod("Map")!.Invoke(
+                mapper,
+                new object[] { new Order { Id = 99 }, new Customer { Name = "Grace" } })!;
+
+            Assert.Equal(99, result.OrderId);
+            Assert.Equal("Grace", result.CustomerName);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Generate_Nullable_And_Enum_Conversions()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.NullableEnumMapper")
+                .AddClass("Mapper", c => c
+                    .AddMethod("Map", typeof(AdvancedDto), m => m
+                        .WithParameter<AdvancedSource>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<AdvancedSource>("source");
+                            var destination = body.DeclareLocal<AdvancedDto>("destination");
+
+                            body.Assign(destination, body.New<AdvancedDto>());
+                            body.Assign(
+                                body.Property(destination, nameof(AdvancedDto.Quantity)),
+                                body.If(
+                                    body.IsNull(body.Property(source, nameof(AdvancedSource.Quantity))),
+                                    body.Constant(7),
+                                    body.Convert<int>(body.Property(source, nameof(AdvancedSource.Quantity)))));
+                            body.Assign(
+                                body.Property(destination, nameof(AdvancedDto.OptionalQuantity)),
+                                body.Convert<int?>(body.Property(source, nameof(AdvancedSource.RawQuantity))));
+                            body.Assign(
+                                body.Property(destination, nameof(AdvancedDto.Status)),
+                                body.Convert<AdvancedStatus>(body.Property(source, nameof(AdvancedSource.StatusCode))));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("Mapper"))!;
+            var first = (AdvancedDto)mapper.GetType().GetMethod("Map")!.Invoke(
+                mapper,
+                new object[] { new AdvancedSource { Quantity = null, RawQuantity = 11, StatusCode = 2 } })!;
+            var second = (AdvancedDto)mapper.GetType().GetMethod("Map")!.Invoke(
+                mapper,
+                new object[] { new AdvancedSource { Quantity = 5, RawQuantity = null, StatusCode = 1 } })!;
+
+            Assert.Equal(7, first.Quantity);
+            Assert.Equal(11, first.OptionalQuantity);
+            Assert.Equal(AdvancedStatus.Paid, first.Status);
+            Assert.Equal(5, second.Quantity);
+            Assert.Null(second.OptionalQuantity);
+            Assert.Equal(AdvancedStatus.Pending, second.Status);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Access_Static_Property_And_Field()
+        {
+            StaticMappingState.Prefix = "ORD";
+            StaticMappingState.Counter = 123;
+
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.StaticMembers")
+                .AddClass("Mapper", c => c
+                    .AddMethod("Map", typeof(OrderDto), m => m
+                        .WithParameter<Order>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<Order>("source");
+                            var destination = body.DeclareLocal<OrderDto>("destination");
+
+                            body.Assign(destination, body.New<OrderDto>());
+                            body.Assign(body.Property(destination, nameof(OrderDto.OrderId)), body.Property(source, nameof(Order.Id)));
+                            body.Assign(
+                                body.Property(destination, nameof(OrderDto.CustomerName)),
+                                body.Concat(
+                                    body.StaticProperty(typeof(StaticMappingState), nameof(StaticMappingState.Prefix)),
+                                    body.Constant("-"),
+                                    body.Convert<string>(body.StaticField(typeof(StaticMappingState), nameof(StaticMappingState.Counter)))));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("Mapper"))!;
+            var result = (OrderDto)mapper.GetType().GetMethod("Map")!.Invoke(mapper, new object[] { new Order { Id = 88 } })!;
+
+            Assert.Equal(88, result.OrderId);
+            Assert.Equal("ORD-123", result.CustomerName);
+        }
+
         public interface ICalculator
         {
             string Name { get; set; }
@@ -780,6 +980,80 @@ namespace DynaBee.Tests.FluentApi
             }
 
             public string Prefix { get; }
+        }
+
+        public sealed class User
+        {
+            public string FirstName { get; set; }
+
+            public string LastName { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        public sealed class UserDto
+        {
+            public string DisplayName { get; set; }
+
+            public string Name { get; set; }
+        }
+
+        public sealed class Invoice
+        {
+            public double Total { get; set; }
+        }
+
+        public sealed class InvoiceDto
+        {
+            public decimal Total { get; set; }
+        }
+
+        public sealed class Order
+        {
+            public int Id { get; set; }
+        }
+
+        public sealed class Customer
+        {
+            public string Name { get; set; }
+        }
+
+        public sealed class OrderDto
+        {
+            public int OrderId { get; set; }
+
+            public string CustomerName { get; set; }
+        }
+
+        public sealed class AdvancedSource
+        {
+            public int? Quantity { get; set; }
+
+            public int? RawQuantity { get; set; }
+
+            public int StatusCode { get; set; }
+        }
+
+        public sealed class AdvancedDto
+        {
+            public int Quantity { get; set; }
+
+            public int? OptionalQuantity { get; set; }
+
+            public AdvancedStatus Status { get; set; }
+        }
+
+        public enum AdvancedStatus
+        {
+            Pending = 1,
+            Paid = 2
+        }
+
+        public static class StaticMappingState
+        {
+            public static string Prefix { get; set; }
+
+            public static int Counter;
         }
 
         private sealed class TestUnitOfWork : IUnitOfWork
