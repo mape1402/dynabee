@@ -1,5 +1,6 @@
 namespace DynaBee.FluentApi.Body
 {
+    using DynaBee.Infrastructure.ContextBuilders;
     using System.Collections.Concurrent;
     using System.Reflection;
     using System.Reflection.Emit;
@@ -8,16 +9,22 @@ namespace DynaBee.FluentApi.Body
     {
         private readonly ILGenerator _il;
         private readonly Type _returnType;
+        private readonly Type _selfType;
+        private readonly TypeContextBuilder _typeContextBuilder;
         private readonly Dictionary<string, BeeParameterExpression> _parameters;
         private readonly Dictionary<string, BeeLocalExpression> _locals = new(StringComparer.Ordinal);
 
         public BeeMethodBodyBuilder(
             ILGenerator il,
             Type returnType,
-            IReadOnlyList<(string Name, Type Type, int ArgumentIndex)> parameters)
+            IReadOnlyList<(string Name, Type Type, int ArgumentIndex)> parameters,
+            Type selfType = null,
+            TypeContextBuilder typeContextBuilder = null)
         {
             _il = il ?? throw new ArgumentNullException(nameof(il));
             _returnType = returnType ?? throw new ArgumentNullException(nameof(returnType));
+            _selfType = selfType;
+            _typeContextBuilder = typeContextBuilder;
             _parameters = parameters.ToDictionary(
                 x => x.Name,
                 x => new BeeParameterExpression(x.Name, x.Type, x.ArgumentIndex),
@@ -25,6 +32,14 @@ namespace DynaBee.FluentApi.Body
         }
 
         public bool HasReturn { get; private set; }
+
+        public IBeeValueExpression Self()
+        {
+            if (_selfType == null)
+                throw new InvalidOperationException("Self is not available in static methods.");
+
+            return new BeeSelfExpression(_selfType, _typeContextBuilder);
+        }
 
         public IBeeParameter Parameter(string name)
         {
@@ -73,6 +88,75 @@ namespace DynaBee.FluentApi.Body
         public IBeeValueExpression New<T>()
             => New(typeof(T));
 
+        public IBeeValueExpression Call(IBeeValueExpression instance, MethodInfo method, params IBeeValueExpression[] arguments)
+        {
+            if (instance == null)
+                throw new ArgumentNullException(nameof(instance));
+
+            if (method == null)
+                throw new ArgumentNullException(nameof(method));
+
+            return CreateCallExpression(RequireExpression(instance), method, isStaticCall: false, arguments);
+        }
+
+        public IBeeValueExpression Call(
+            IBeeValueExpression instance,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            params IBeeValueExpression[] arguments)
+        {
+            if (instance == null)
+                throw new ArgumentNullException(nameof(instance));
+
+            if (string.IsNullOrWhiteSpace(methodName))
+                throw new ArgumentException(nameof(methodName));
+
+            if (parameterTypes == null)
+                throw new ArgumentNullException(nameof(parameterTypes));
+
+            var expression = RequireExpression(instance);
+            var method = ResolveInstanceMethod(expression, methodName, parameterTypes);
+            return CreateCallExpression(expression, method, isStaticCall: false, arguments);
+        }
+
+        public IBeeValueExpression StaticCall(MethodInfo method, params IBeeValueExpression[] arguments)
+        {
+            if (method == null)
+                throw new ArgumentNullException(nameof(method));
+
+            return CreateCallExpression(null, method, isStaticCall: true, arguments);
+        }
+
+        public IBeeValueExpression StaticCall(
+            Type declaringType,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            params IBeeValueExpression[] arguments)
+        {
+            if (declaringType == null)
+                throw new ArgumentNullException(nameof(declaringType));
+
+            if (string.IsNullOrWhiteSpace(methodName))
+                throw new ArgumentException(nameof(methodName));
+
+            if (parameterTypes == null)
+                throw new ArgumentNullException(nameof(parameterTypes));
+
+            var method = ResolveStaticMethod(declaringType, methodName, parameterTypes);
+            return CreateCallExpression(null, method, isStaticCall: true, arguments);
+        }
+
+        public IBeeMethodBodyBuilder Evaluate(IBeeValueExpression expression)
+        {
+            var value = RequireExpression(expression);
+            value.EmitLoad(_il);
+
+            if (value.Type != typeof(void))
+                _il.Emit(OpCodes.Pop);
+
+            return this;
+        }
+
         public IBeeAssignableExpression Property(IBeeValueExpression instance, string name)
         {
             if (instance == null)
@@ -80,6 +164,12 @@ namespace DynaBee.FluentApi.Body
 
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException(nameof(name));
+
+            if (instance is BeeSelfExpression selfExpression &&
+                selfExpression.TypeContextBuilder?.TryGetProperty(name, out var dynamicProperty) == true)
+            {
+                return new BeeDynamicPropertyExpression(RequireExpression(instance), name, dynamicProperty);
+            }
 
             var property = instance.Type.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
                 ?? throw new MissingMemberException(instance.Type.FullName, name);
@@ -108,6 +198,12 @@ namespace DynaBee.FluentApi.Body
 
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException(nameof(name));
+
+            if (instance is BeeSelfExpression selfExpression &&
+                selfExpression.TypeContextBuilder?.TryGetField(name, out var dynamicField) == true)
+            {
+                return new BeeFieldExpression(RequireExpression(instance), dynamicField);
+            }
 
             var field = instance.Type.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
                 ?? throw new MissingFieldException(instance.Type.FullName, name);
@@ -271,6 +367,118 @@ namespace DynaBee.FluentApi.Body
             BeeIlConversions.EmitConvert(value.Type, targetType, il);
         }
 
+        private IBeeValueExpression CreateCallExpression(
+            BeeValueExpression instance,
+            MethodInfo method,
+            bool isStaticCall,
+            IBeeValueExpression[] arguments)
+        {
+            ValidateMethod(method, isStaticCall);
+
+            var argumentExpressions = (arguments ?? Array.Empty<IBeeValueExpression>())
+                .Select(RequireExpression)
+                .ToArray();
+
+            ValidateCallTarget(instance, method, isStaticCall);
+            ValidateCallArguments(method, argumentExpressions);
+
+            return new BeeMethodCallExpression(instance, method, argumentExpressions);
+        }
+
+        private MethodInfo ResolveInstanceMethod(BeeValueExpression instance, string methodName, IReadOnlyList<Type> parameterTypes)
+        {
+            if (instance is BeeSelfExpression selfExpression &&
+                selfExpression.TypeContextBuilder?.TryGetMethod(methodName, parameterTypes, out var dynamicMethod) == true)
+            {
+                return dynamicMethod;
+            }
+
+            return ResolveMethod(instance.Type, methodName, parameterTypes, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        }
+
+        private static MethodInfo ResolveStaticMethod(Type declaringType, string methodName, IReadOnlyList<Type> parameterTypes)
+            => ResolveMethod(declaringType, methodName, parameterTypes, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static MethodInfo ResolveMethod(Type declaringType, string methodName, IReadOnlyList<Type> parameterTypes, BindingFlags bindingFlags)
+        {
+            var matches = declaringType
+                .GetMethods(bindingFlags)
+                .Where(x => string.Equals(x.Name, methodName, StringComparison.Ordinal))
+                .Where(x => ParametersMatch(x.GetParameters(), parameterTypes))
+                .ToArray();
+
+            if (matches.Length == 0)
+                throw new MissingMethodException(declaringType.FullName, FormatMethodSignature(methodName, parameterTypes));
+
+            if (matches.Length > 1)
+                throw new AmbiguousMatchException($"More than one method matches '{FormatMethodSignature(methodName, parameterTypes)}' on '{declaringType}'.");
+
+            return matches[0];
+        }
+
+        private static bool ParametersMatch(ParameterInfo[] parameters, IReadOnlyList<Type> parameterTypes)
+        {
+            if (parameters.Length != parameterTypes.Count)
+                return false;
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                if (parameters[i].ParameterType != parameterTypes[i])
+                    return false;
+            }
+
+            return true;
+        }
+
+        private static void ValidateMethod(MethodInfo method, bool isStaticCall)
+        {
+            if (method.ContainsGenericParameters)
+                throw new InvalidOperationException($"Method '{method}' contains open generic parameters. Supply a closed MethodInfo.");
+
+            if (method.IsStatic != isStaticCall)
+            {
+                var expected = isStaticCall ? "static" : "instance";
+                throw new InvalidOperationException($"Method '{method}' is not a {expected} method.");
+            }
+        }
+
+        private static void ValidateCallTarget(BeeValueExpression instance, MethodInfo method, bool isStaticCall)
+        {
+            if (isStaticCall)
+                return;
+
+            if (instance == null)
+                throw new InvalidOperationException($"Instance method '{method}' requires a target instance.");
+
+            var declaringType = method.DeclaringType
+                ?? throw new InvalidOperationException($"Method '{method}' has no declaring type.");
+
+            if (!declaringType.IsAssignableFrom(instance.Type) && instance is not BeeSelfExpression)
+                throw new InvalidOperationException($"Method '{method}' cannot be called on instance type '{instance.Type}'.");
+        }
+
+        private static void ValidateCallArguments(MethodInfo method, IReadOnlyList<BeeValueExpression> arguments)
+        {
+            var parameters = method.GetParameters();
+            if (parameters.Length != arguments.Count)
+            {
+                throw new InvalidOperationException(
+                    $"Method '{method}' expects {parameters.Length} argument(s), but {arguments.Count} were provided.");
+            }
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                if (!BeeIlConversions.CanConvert(arguments[i].Type, parameters[i].ParameterType))
+                {
+                    throw new InvalidOperationException(
+                        $"Argument {i} for method '{method}' has type '{arguments[i].Type}', which cannot be assigned or converted to '{parameters[i].ParameterType}'.");
+                }
+            }
+        }
+
+        private static string FormatMethodSignature(string methodName, IReadOnlyList<Type> parameterTypes)
+            => $"{methodName}({string.Join(", ", parameterTypes.Select(x => x.FullName ?? x.Name))})";
+
         private static BeeValueExpression RequireExpression(IBeeValueExpression expression)
             => expression as BeeValueExpression
                ?? throw new NotSupportedException("Custom value expression implementations are not supported.");
@@ -315,6 +523,19 @@ namespace DynaBee.FluentApi.Body
 
         public override void EmitLoad(ILGenerator il)
             => il.Emit(OpCodes.Ldarg, ArgumentIndex);
+    }
+
+    internal sealed class BeeSelfExpression : BeeValueExpression
+    {
+        public BeeSelfExpression(Type type, TypeContextBuilder typeContextBuilder) : base(type)
+        {
+            TypeContextBuilder = typeContextBuilder;
+        }
+
+        public TypeContextBuilder TypeContextBuilder { get; }
+
+        public override void EmitLoad(ILGenerator il)
+            => il.Emit(OpCodes.Ldarg_0);
     }
 
     internal sealed class BeeLocalExpression : BeeAssignableExpression, IBeeLocal
@@ -377,6 +598,42 @@ namespace DynaBee.FluentApi.Body
         {
             var setter = _property.GetSetMethod(true)
                 ?? throw new InvalidOperationException($"Property '{_property.Name}' has no setter.");
+
+            _instance.EmitLoad(il);
+            BeeMethodBodyBuilder.EmitLoadWithConversion(il, value, Type);
+            il.Emit(ShouldCallVirtual(setter) ? OpCodes.Callvirt : OpCodes.Call, setter);
+        }
+
+        private static bool ShouldCallVirtual(MethodInfo method)
+            => method.IsVirtual && !method.IsFinal && !method.DeclaringType!.IsValueType;
+    }
+
+    internal sealed class BeeDynamicPropertyExpression : BeeAssignableExpression
+    {
+        private readonly BeeValueExpression _instance;
+        private readonly string _name;
+        private readonly DynamicPropertyAccessor _property;
+
+        public BeeDynamicPropertyExpression(BeeValueExpression instance, string name, DynamicPropertyAccessor property) : base(property.Type)
+        {
+            _instance = instance;
+            _name = name;
+            _property = property;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            var getter = _property.Getter
+                ?? throw new InvalidOperationException($"Property '{_name}' has no getter.");
+
+            _instance.EmitLoad(il);
+            il.Emit(ShouldCallVirtual(getter) ? OpCodes.Callvirt : OpCodes.Call, getter);
+        }
+
+        public override void EmitAssign(ILGenerator il, BeeValueExpression value)
+        {
+            var setter = _property.Setter
+                ?? throw new InvalidOperationException($"Property '{_name}' has no setter.");
 
             _instance.EmitLoad(il);
             BeeMethodBodyBuilder.EmitLoadWithConversion(il, value, Type);
@@ -537,6 +794,36 @@ namespace DynaBee.FluentApi.Body
         }
     }
 
+    internal sealed class BeeMethodCallExpression : BeeValueExpression
+    {
+        private readonly BeeValueExpression _instance;
+        private readonly MethodInfo _method;
+        private readonly BeeValueExpression[] _arguments;
+
+        public BeeMethodCallExpression(BeeValueExpression instance, MethodInfo method, BeeValueExpression[] arguments)
+            : base(method.ReturnType)
+        {
+            _instance = instance;
+            _method = method;
+            _arguments = arguments;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            if (!_method.IsStatic)
+                _instance.EmitLoad(il);
+
+            var parameters = _method.GetParameters();
+            for (var i = 0; i < _arguments.Length; i++)
+                BeeMethodBodyBuilder.EmitLoadWithConversion(il, _arguments[i], parameters[i].ParameterType);
+
+            il.Emit(ShouldCallVirtual(_method) ? OpCodes.Callvirt : OpCodes.Call, _method);
+        }
+
+        private static bool ShouldCallVirtual(MethodInfo method)
+            => !method.IsStatic && method.IsVirtual && !method.IsFinal && !method.DeclaringType!.IsValueType;
+    }
+
     internal sealed class BeeComparisonExpression : BeeValueExpression
     {
         private readonly BeeValueExpression _left;
@@ -672,6 +959,41 @@ namespace DynaBee.FluentApi.Body
 
     internal static class BeeIlConversions
     {
+        public static bool CanConvert(Type fromType, Type toType)
+        {
+            if (fromType == typeof(void) || toType == typeof(void))
+                return false;
+
+            if (fromType == toType || toType.IsAssignableFrom(fromType))
+                return true;
+
+            var fromNullable = Nullable.GetUnderlyingType(fromType);
+            var toNullable = Nullable.GetUnderlyingType(toType);
+
+            if (toNullable != null)
+                return CanConvert(fromNullable ?? fromType, toNullable);
+
+            if (fromNullable != null)
+                return CanConvert(fromNullable, toType);
+
+            if (fromType.IsEnum)
+                return CanConvert(Enum.GetUnderlyingType(fromType), toType);
+
+            if (toType.IsEnum)
+                return CanConvert(fromType, Enum.GetUnderlyingType(toType));
+
+            if (fromType == typeof(object) && toType.IsValueType)
+                return true;
+
+            if (toType == typeof(string))
+                return true;
+
+            if (!toType.IsValueType)
+                return !fromType.IsValueType;
+
+            return IsNumericConversion(fromType, toType);
+        }
+
         public static void EmitConvert(Type fromType, Type toType, ILGenerator il)
         {
             if (fromType == toType)
@@ -764,6 +1086,39 @@ namespace DynaBee.FluentApi.Body
                 throw new NotSupportedException($"Conversion from '{fromType}' to '{toType}' is not supported.");
             }
         }
+
+        private static bool IsNumericConversion(Type fromType, Type toType)
+        {
+            if (!IsNumericLike(fromType))
+                return false;
+
+            if (toType == typeof(decimal))
+            {
+                return fromType == typeof(byte)
+                    || fromType == typeof(short)
+                    || fromType == typeof(int)
+                    || fromType == typeof(long)
+                    || fromType == typeof(float)
+                    || fromType == typeof(double);
+            }
+
+            return toType == typeof(int)
+                || toType == typeof(long)
+                || toType == typeof(float)
+                || toType == typeof(double)
+                || toType == typeof(short)
+                || toType == typeof(byte)
+                || toType == typeof(bool);
+        }
+
+        private static bool IsNumericLike(Type type)
+            => type == typeof(byte)
+               || type == typeof(short)
+               || type == typeof(int)
+               || type == typeof(long)
+               || type == typeof(float)
+               || type == typeof(double)
+               || type == typeof(bool);
 
         private static void EmitToNullable(Type fromType, Type nullableType, Type nullableUnderlyingType, ILGenerator il)
         {

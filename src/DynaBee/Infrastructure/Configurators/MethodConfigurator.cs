@@ -1,6 +1,7 @@
 namespace DynaBee.Infrastructure.Configurators
 {
     using DynaBee.FluentApi.Body;
+    using DynaBee.Infrastructure.ContextBuilders;
     using System.Linq.Expressions;
     using System.Reflection;
     using System.Reflection.Emit;
@@ -70,6 +71,9 @@ namespace DynaBee.Infrastructure.Configurators
             }
 
             var methodBuilder = typeContextBuilder.TypeBuilder.DefineMethod(_name, attributes, returnType, parameterTypes);
+            if (typeContextBuilder is TypeContextBuilder concreteTypeContextBuilder)
+                concreteTypeContextBuilder.RegisterMethod(_name, parameterTypes, methodBuilder);
+
             for (var i = 0; i < _parameters.Count; i++)
                 methodBuilder.DefineParameter(i + 1, ParameterAttributes.None, _parameters[i].Name);
 
@@ -96,7 +100,12 @@ namespace DynaBee.Infrastructure.Configurators
                     .Select((x, index) => (x.Name, Type: parameterTypes[index], ArgumentIndex: _isStatic ? index : index + 1))
                     .ToArray();
 
-                var bodyBuilder = new BeeMethodBodyBuilder(il, returnType, bodyParameters);
+                var bodyBuilder = new BeeMethodBodyBuilder(
+                    il,
+                    returnType,
+                    bodyParameters,
+                    _isStatic ? null : typeContextBuilder.TypeBuilder,
+                    typeContextBuilder as TypeContextBuilder);
                 _methodBody(bodyBuilder);
 
                 if (!bodyBuilder.HasReturn)

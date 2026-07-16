@@ -1,5 +1,6 @@
 ﻿namespace DynaBee.Infrastructure.Configurators
 {
+    using DynaBee.Infrastructure.ContextBuilders;
     using System.Reflection;
     using System.Reflection.Emit;
 
@@ -70,9 +71,12 @@
             foreach (var attribute in _attributes)
                 propertyBuilder.SetCustomAttribute(attribute.Build());
 
+            MethodBuilder getMethodBuilder = null;
+            MethodBuilder setMethodBuilder = null;
+
             if (_hasGetter)
             {
-                var getMethodBuilder = typeBuilder.DefineMethod(
+                getMethodBuilder = typeBuilder.DefineMethod(
                     $"get_{_name}",
                     BuildAccessorAttributes(_getterAccessModifier),
                     type,
@@ -89,7 +93,7 @@
 
             if (_hasSetter)
             {
-                var setMethodBuilder = typeBuilder.DefineMethod(
+                setMethodBuilder = typeBuilder.DefineMethod(
                     $"set_{_name}",
                     BuildAccessorAttributes(_setterAccessModifier),
                     null,
@@ -104,6 +108,9 @@
 
                 propertyBuilder.SetSetMethod(setMethodBuilder);
             }
+
+            if (typeContextBuilder is TypeContextBuilder concreteTypeContextBuilder)
+                concreteTypeContextBuilder.RegisterProperty(_name, type, getMethodBuilder, setMethodBuilder);
         }
 
         private static MethodAttributes BuildAccessorAttributes(MethodAccessModifier accessModifier)

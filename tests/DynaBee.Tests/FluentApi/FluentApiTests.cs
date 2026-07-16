@@ -952,6 +952,144 @@ namespace DynaBee.Tests.FluentApi
         }
 
         [Fact]
+        public void EmitsBody_Can_Call_Instance_Method()
+        {
+            var formatMethod = typeof(NameFormatter).GetMethod(nameof(NameFormatter.Format))!;
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.InstanceCall")
+                .AddClass("Mapper", c => c
+                    .AddMethod("Map", typeof(string), m => m
+                        .WithParameter<User>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<User>("source");
+                            var formatter = body.DeclareLocal<NameFormatter>("formatter");
+
+                            body.Assign(formatter, body.New<NameFormatter>());
+                            body.Return(body.Call(formatter, formatMethod, body.Property(source, nameof(User.Name))));
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("Mapper"))!;
+            var result = (string)mapper.GetType().GetMethod("Map")!.Invoke(mapper, new object[] { new User { Name = "Ada" } })!;
+
+            Assert.Equal("Formatted: Ada", result);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Call_Static_Generic_Method()
+        {
+            var getRequiredService = typeof(ServiceProviderServiceExtensions)
+                .GetMethods()
+                .Single(x => x.Name == nameof(ServiceProviderServiceExtensions.GetRequiredService)
+                    && x.IsGenericMethodDefinition
+                    && x.GetParameters().Length == 1)
+                .MakeGenericMethod(typeof(NameFormatter));
+
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.StaticGenericCall")
+                .AddClass("Resolver", c => c
+                    .AddMethod("Resolve", typeof(object), m => m
+                        .WithParameter<IServiceProvider>("services")
+                        .EmitsBody(body =>
+                        {
+                            var services = body.Parameter<IServiceProvider>("services");
+                            body.Return(body.StaticCall(getRequiredService, services));
+                        })))
+                .Build();
+
+            var services = new ServiceCollection()
+                .AddSingleton<NameFormatter>()
+                .BuildServiceProvider();
+            var resolver = Activator.CreateInstance(context.GetClrType("Resolver"))!;
+            var result = resolver.GetType().GetMethod("Resolve")!.Invoke(resolver, new object[] { services });
+
+            Assert.IsType<NameFormatter>(result);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Call_Interface_Method_And_Assign_Result()
+        {
+            var resolveMethod = typeof(IValueResolver<Order, OrderDto, string>).GetMethod(nameof(IValueResolver<Order, OrderDto, string>.Resolve))!;
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.InterfaceCall")
+                .AddClass("Mapper", c => c
+                    .AddMethod("Map", typeof(OrderDto), m => m
+                        .WithParameter<IValueResolver<Order, OrderDto, string>>("resolver")
+                        .WithParameter<Order>("source")
+                        .WithParameter<TestMapContext>("context")
+                        .EmitsBody(body =>
+                        {
+                            var resolver = body.Parameter<IValueResolver<Order, OrderDto, string>>("resolver");
+                            var source = body.Parameter<Order>("source");
+                            var mapContext = body.Parameter<TestMapContext>("context");
+                            var destination = body.DeclareLocal<OrderDto>("destination");
+
+                            body.Assign(destination, body.New<OrderDto>());
+                            body.Assign(
+                                body.Property(destination, nameof(OrderDto.TotalText)),
+                                body.Call(resolver, resolveMethod, source, destination, mapContext));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("Mapper"))!;
+            var result = (OrderDto)mapper.GetType().GetMethod("Map")!.Invoke(
+                mapper,
+                new object[] { new OrderTotalTextResolver(), new Order { Id = 77 }, new TestMapContext { Prefix = "Order " } })!;
+
+            Assert.Equal("Order 77", result.TotalText);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Access_Self_Property_And_Call_Method()
+        {
+            var formatMethod = typeof(NameFormatter).GetMethod(nameof(NameFormatter.Format))!;
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.Self")
+                .AddClass("Mapper", c => c
+                    .AddAutoProperty<NameFormatter>("Formatter")
+                    .AddMethod("Map", typeof(string), m => m
+                        .WithParameter<User>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<User>("source");
+                            var formatter = body.Property(body.Self(), "Formatter");
+
+                            body.Return(body.Call(formatter, formatMethod, body.Property(source, nameof(User.Name))));
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("Mapper"))!;
+            mapper.GetType().GetProperty("Formatter")!.SetValue(mapper, new NameFormatter());
+            var result = (string)mapper.GetType().GetMethod("Map")!.Invoke(mapper, new object[] { new User { Name = "Grace" } })!;
+
+            Assert.Equal("Formatted: Grace", result);
+        }
+
+        [Fact]
+        public void EmitsBody_Rejects_Incompatible_Method_Call_Arguments()
+        {
+            var formatMethod = typeof(NameFormatter).GetMethod(nameof(NameFormatter.FormatCount))!;
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                DynaBeeBuilder
+                    .CreateAssembly("Dynabee.Fluent.Tests.Body.InvalidCall")
+                    .AddClass("Mapper", c => c
+                        .AddMethod("Map", typeof(string), m => m
+                            .EmitsBody(body =>
+                            {
+                                var formatter = body.DeclareLocal<NameFormatter>("formatter");
+
+                                body.Assign(formatter, body.New<NameFormatter>());
+                                body.Return(body.Call(formatter, formatMethod, body.New<User>()));
+                            })))
+                    .Build());
+
+            Assert.Contains("cannot be assigned or converted", exception.Message);
+        }
+
+        [Fact]
         public void CreateBoundMethodInvoker_Can_Invoke_Single_Source_Runtime_Mapper()
         {
             var context = DynaBeeBuilder
@@ -1170,11 +1308,33 @@ namespace DynaBee.Tests.FluentApi
             public int OrderId { get; set; }
 
             public string CustomerName { get; set; }
+
+            public string TotalText { get; set; }
         }
 
         public sealed class TestMapContext
         {
             public string Prefix { get; set; } = string.Empty;
+        }
+
+        public interface IValueResolver<in TSource, in TDestination, out TMember>
+        {
+            TMember Resolve(TSource source, TDestination destination, TestMapContext context);
+        }
+
+        public sealed class OrderTotalTextResolver : IValueResolver<Order, OrderDto, string>
+        {
+            public string Resolve(Order source, OrderDto destination, TestMapContext context)
+                => $"{context.Prefix}{source.Id}";
+        }
+
+        public sealed class NameFormatter
+        {
+            public string Format(string name)
+                => $"Formatted: {name}";
+
+            public string FormatCount(int count)
+                => $"Count: {count}";
         }
 
         public sealed class AdvancedSource
