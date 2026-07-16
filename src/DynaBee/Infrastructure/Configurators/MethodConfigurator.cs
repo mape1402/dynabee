@@ -1,5 +1,6 @@
 namespace DynaBee.Infrastructure.Configurators
 {
+    using DynaBee.FluentApi.Body;
     using System.Linq.Expressions;
     using System.Reflection;
     using System.Reflection.Emit;
@@ -10,6 +11,7 @@ namespace DynaBee.Infrastructure.Configurators
         private readonly BeeType _returnType;
         private readonly IReadOnlyList<(string Name, BeeType Type)> _parameters;
         private readonly Action<ILGenerator> _ilBody;
+        private readonly Action<IBeeMethodBodyBuilder> _methodBody;
         private readonly Delegate _lambdaBody;
         private readonly LambdaExpression _expressionBody;
         private readonly bool _isStatic;
@@ -22,6 +24,7 @@ namespace DynaBee.Infrastructure.Configurators
             BeeType returnType,
             IReadOnlyList<(string Name, BeeType Type)> parameters,
             Action<ILGenerator> ilBody,
+            Action<IBeeMethodBodyBuilder> methodBody,
             Delegate lambdaBody,
             LambdaExpression expressionBody,
             bool isStatic,
@@ -33,6 +36,7 @@ namespace DynaBee.Infrastructure.Configurators
             _returnType = returnType;
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _ilBody = ilBody;
+            _methodBody = methodBody;
             _lambdaBody = lambdaBody;
             _expressionBody = expressionBody;
             _isStatic = isStatic;
@@ -83,6 +87,21 @@ namespace DynaBee.Infrastructure.Configurators
             if (_lambdaBody != null)
             {
                 EmitLambdaForwarder(il, parameterTypes, returnType);
+                return;
+            }
+
+            if (_methodBody != null)
+            {
+                var bodyParameters = _parameters
+                    .Select((x, index) => (x.Name, Type: parameterTypes[index], ArgumentIndex: _isStatic ? index : index + 1))
+                    .ToArray();
+
+                var bodyBuilder = new BeeMethodBodyBuilder(il, returnType, bodyParameters);
+                _methodBody(bodyBuilder);
+
+                if (!bodyBuilder.HasReturn)
+                    EmitDefaultBody(il, returnType);
+
                 return;
             }
 

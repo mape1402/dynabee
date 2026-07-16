@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.2.0] - 2026-07-16
+
+### Added
+- Added `BeeMethodBuilder.EmitsBody(...)` and public method body builder abstractions for generating method bodies without direct IL opcodes.
+- Added body builder support for parameters, locals, object construction, constants, default values, property and field access, assignment, conditionals, conversions, string concatenation, numeric addition, null checks, and returns.
+- Added separate public body builder contracts for value expressions, assignable expressions, locals, parameters, and method bodies.
+- Added body builder support for nullable conversions, nullable null checks, enum conversions, and static property/field access.
+
 ## [v1.1.0] - 2026-07-13
 
 ### Added
