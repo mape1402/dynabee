@@ -9,6 +9,7 @@ namespace DynaBee.Tests.FluentApi
     using global::DynaBee.FluentApi;
     using global::DynaBee.FluentApi.DependencyInjection;
     using global::DynaBee.FluentApi.Diagnostics;
+    using global::DynaBee.FluentApi.Invocation;
     using global::DynaBee.Infrastructure;
     using Xunit;
 
@@ -950,6 +951,152 @@ namespace DynaBee.Tests.FluentApi
             Assert.Equal("ORD-123", result.CustomerName);
         }
 
+        [Fact]
+        public void CreateBoundMethodInvoker_Can_Invoke_Single_Source_Runtime_Mapper()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Invocation.SingleSource")
+                .AddClass("UserToUserDtoMapper", c => c
+                    .AddMethod("Map", typeof(UserDto), m => m
+                        .WithParameter<User>("source")
+                        .WithParameter<TestMapContext>("context")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<User>("source");
+                            var mapContext = body.Parameter<TestMapContext>("context");
+                            var destination = body.DeclareLocal<UserDto>("destination");
+
+                            body.Assign(destination, body.New<UserDto>());
+                            body.Assign(
+                                body.Property(destination, nameof(UserDto.Name)),
+                                body.Concat(
+                                    body.Property(mapContext, nameof(TestMapContext.Prefix)),
+                                    body.Property(source, nameof(User.Name))));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = context.CreateInstance("UserToUserDtoMapper");
+            var invoker = context.CreateBoundMethodInvoker(
+                "UserToUserDtoMapper",
+                mapper,
+                "Map",
+                new[] { typeof(User), typeof(TestMapContext) });
+
+            var result = (UserDto)invoker.Invoke(new object[] { new User { Name = "Ada" }, new TestMapContext { Prefix = "Ms. " } })!;
+
+            Assert.Equal(typeof(UserDto), invoker.ReturnType);
+            Assert.Equal(new[] { typeof(User), typeof(TestMapContext) }, invoker.ParameterTypes);
+            Assert.Equal("Ms. Ada", result.Name);
+        }
+
+        [Fact]
+        public void CreateBoundMethodInvoker_Can_Invoke_Multi_Source_Runtime_Mapper()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Invocation.MultiSource")
+                .AddClass("OrderCustomerToOrderDtoMapper", c => c
+                    .AddMethod("Map", typeof(OrderDto), m => m
+                        .WithParameter<Order>("order")
+                        .WithParameter<Customer>("customer")
+                        .WithParameter<TestMapContext>("context")
+                        .EmitsBody(body =>
+                        {
+                            var order = body.Parameter<Order>("order");
+                            var customer = body.Parameter<Customer>("customer");
+                            var mapContext = body.Parameter<TestMapContext>("context");
+                            var destination = body.DeclareLocal<OrderDto>("destination");
+
+                            body.Assign(destination, body.New<OrderDto>());
+                            body.Assign(body.Property(destination, nameof(OrderDto.OrderId)), body.Property(order, nameof(Order.Id)));
+                            body.Assign(
+                                body.Property(destination, nameof(OrderDto.CustomerName)),
+                                body.Concat(
+                                    body.Property(mapContext, nameof(TestMapContext.Prefix)),
+                                    body.Property(customer, nameof(Customer.Name))));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = context.CreateInstance("OrderCustomerToOrderDtoMapper");
+            var invoker = context.CreateBoundMethodInvoker(
+                "OrderCustomerToOrderDtoMapper",
+                mapper,
+                "Map",
+                new[] { typeof(Order), typeof(Customer), typeof(TestMapContext) });
+
+            var result = (OrderDto)invoker.Invoke(new object[]
+            {
+                new Order { Id = 501 },
+                new Customer { Name = "Grace" },
+                new TestMapContext { Prefix = "Customer: " }
+            })!;
+
+            Assert.Equal(501, result.OrderId);
+            Assert.Equal("Customer: Grace", result.CustomerName);
+        }
+
+        [Fact]
+        public void CreateMethodInvoker_Caches_Unbound_Dispatch_Plan()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Invocation.Cache")
+                .AddClass("UserToUserDtoMapper", c => c
+                    .AddMethod("Map", typeof(UserDto), m => m
+                        .WithParameter<User>("source")
+                        .WithParameter<TestMapContext>("context")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<User>("source");
+                            var destination = body.DeclareLocal<UserDto>("destination");
+
+                            body.Assign(destination, body.New<UserDto>());
+                            body.Assign(body.Property(destination, nameof(UserDto.Name)), body.Property(source, nameof(User.Name)));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var first = context.CreateMethodInvoker("UserToUserDtoMapper", "Map", new[] { typeof(User), typeof(TestMapContext) });
+            var second = context.CreateMethodInvoker("UserToUserDtoMapper", "Map", new[] { typeof(User), typeof(TestMapContext) });
+            var mapper = context.CreateInstance("UserToUserDtoMapper");
+
+            Assert.Same(first, second);
+
+            for (var i = 0; i < 5; i++)
+            {
+                var result = (UserDto)first.Invoke(mapper, new object[] { new User { Name = $"User {i}" }, new TestMapContext() })!;
+                Assert.Equal($"User {i}", result.Name);
+            }
+        }
+
+        [Fact]
+        public void CreateMethodInvoker_Fails_With_Clear_Errors()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Invocation.Errors")
+                .AddClass("UserToUserDtoMapper", c => c
+                    .AddMethod("Map", typeof(UserDto), m => m
+                        .WithParameter<User>("source")
+                        .WithParameter<TestMapContext>("context")))
+                .Build();
+
+            var missingMethod = Assert.Throws<InvalidOperationException>(() =>
+                context.CreateMethodInvoker("UserToUserDtoMapper", "Missing", new[] { typeof(User), typeof(TestMapContext) }));
+            var missingOverload = Assert.Throws<InvalidOperationException>(() =>
+                context.CreateMethodInvoker("UserToUserDtoMapper", "Map", new[] { typeof(Customer), typeof(TestMapContext) }));
+            var invoker = context.CreateMethodInvoker("UserToUserDtoMapper", "Map", new[] { typeof(User), typeof(TestMapContext) });
+            var mapper = context.CreateInstance("UserToUserDtoMapper");
+            var countMismatch = Assert.Throws<InvalidOperationException>(() =>
+                invoker.Invoke(mapper, new object[] { new User() }));
+            var typeMismatch = Assert.Throws<InvalidOperationException>(() =>
+                invoker.Invoke(mapper, new object[] { new Customer(), new TestMapContext() }));
+
+            Assert.Contains("Dynabee.Fluent.Tests.Invocation.Errors", missingMethod.Message);
+            Assert.Contains("UserToUserDtoMapper", missingOverload.Message);
+            Assert.Contains("Map", countMismatch.Message);
+            Assert.Contains(typeof(User).FullName!, typeMismatch.Message);
+        }
+
         public interface ICalculator
         {
             string Name { get; set; }
@@ -1023,6 +1170,11 @@ namespace DynaBee.Tests.FluentApi
             public int OrderId { get; set; }
 
             public string CustomerName { get; set; }
+        }
+
+        public sealed class TestMapContext
+        {
+            public string Prefix { get; set; } = string.Empty;
         }
 
         public sealed class AdvancedSource

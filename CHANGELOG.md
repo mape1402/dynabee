@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.2.1] - 2026-07-16
+
+### Added
+- Added cached generated method invoker abstractions through `IDynaBeeMethodInvoker` and `IDynaBeeBoundMethodInvoker`.
+- Added `IAssemblyContext` invoker extensions for creating unbound and instance-bound generated method invokers.
+- Added typed bound invoker delegate overloads for one, two, and three method arguments.
+- Added dynamic-method based dispatch so repeated invocations avoid `MethodInfo.Invoke(...)`, repeated method lookup, and repeated delegate creation.
+- Added clear invoker resolution and invocation errors including assembly name, type name, method name, and requested parameter types.
+- Added tests for single-source runtime invocation, multi-source runtime invocation, invoker caching, and error behavior.
+
 ## [v1.2.0] - 2026-07-16
 
 ### Added

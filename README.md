@@ -193,6 +193,38 @@ public sealed class MappingProfile : DynaBeeProfile
 }
 ```
 
+### 5) Cached method invokers
+
+DynaBee can create cached invokers for generated methods. The invoker resolves
+reflection metadata once, compiles a dispatch bridge, and avoids `MethodInfo.Invoke(...)`
+during repeated calls.
+
+```csharp
+using DynaBee.FluentApi.Invocation;
+
+var mapper = context.CreateInstance("UserToUserDtoMapper");
+
+var invoker = context.CreateBoundMethodInvoker(
+    "UserToUserDtoMapper",
+    mapper,
+    "Map",
+    new[] { typeof(User), typeof(IMapContext) });
+
+var result = invoker.Invoke(new object[] { user, mapContext });
+```
+
+Multi-source methods use the same API:
+
+```csharp
+var invoker = context.CreateBoundMethodInvoker(
+    "OrderCustomerToOrderDtoMapper",
+    mapper,
+    "Map",
+    new[] { typeof(Order), typeof(Customer), typeof(IMapContext) });
+
+var result = invoker.Invoke(new object[] { order, customer, mapContext });
+```
+
 ## Real-World Use Cases
 
 ### 1) Plugin systems
