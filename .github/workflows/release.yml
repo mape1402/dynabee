@@ -46,7 +46,7 @@ jobs:
           git push origin ${{ steps.changelog.outputs.tag }}
 
       - name: 📝 Create Draft Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.changelog.outputs.tag }}
           name: ${{ steps.changelog.outputs.tag }}
