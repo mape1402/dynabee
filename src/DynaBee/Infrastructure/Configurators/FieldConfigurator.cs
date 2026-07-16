@@ -1,5 +1,6 @@
 namespace DynaBee.Infrastructure.Configurators
 {
+    using DynaBee.Infrastructure.ContextBuilders;
     using System.Reflection;
 
     internal sealed class FieldConfigurator : IElementConfigurator
@@ -30,7 +31,10 @@ namespace DynaBee.Infrastructure.Configurators
                 ? typeContextBuilder.AssemblyBuilderContext.GetTypeBuilder((string)_type).TypeBuilder
                 : (Type)_type;
 
-            typeContextBuilder.TypeBuilder.DefineField(_name, clrType, access.Attributes);
+            var fieldBuilder = typeContextBuilder.TypeBuilder.DefineField(_name, clrType, access.Attributes);
+
+            if (typeContextBuilder is TypeContextBuilder concreteTypeContextBuilder)
+                concreteTypeContextBuilder.RegisterField(_name, fieldBuilder);
         }
     }
 }

@@ -10,7 +10,7 @@ The recommended application model is DI-first: define `DynaBeeProfile` classes, 
 
 - Runtime type generation without producing intermediate source code.
 - Fluent creation of classes, interfaces, structs, enums, and records.
-- Method implementation through IL, lambdas, or expression trees.
+- Method implementation through IL, lambdas, expression trees, or high-level method body builders.
 - Dependency injection integration.
 - Typed metadata for external extensions (for example EF or other frameworks).
 - Assembly cache/versioning to reduce type build overhead.
@@ -148,7 +148,8 @@ var context = provider.GetRequiredService<IAssemblyContext>();
 `EmitsBody(...)` lets integrations build complete method bodies without using
 IL opcodes. It supports parameters, locals, object construction, instance/static
 property and field access, constants, default values, nullable checks, enum and
-numeric conversions, assignments, conditionals, and returns.
+numeric conversions, assignments, conditionals, method calls, access to the
+generated instance through `Self()`, side-effect evaluation, and returns.
 
 ```csharp
 using DynaBee.FluentApi;
@@ -193,7 +194,90 @@ public sealed class MappingProfile : DynaBeeProfile
 }
 ```
 
-### 5) Cached method invokers
+### 5) DI-based resolver method bodies
+
+DynaBee does not own service lifetimes. Instead, generated method bodies can call
+whatever service provider or resolver API your integration chooses. This keeps
+framework-specific concerns outside the core library while still avoiding direct
+IL in integrations.
+
+```csharp
+using DynaBee.FluentApi;
+using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
+
+var getRequiredService = typeof(ServiceProviderServiceExtensions)
+    .GetMethods()
+    .Single(x => x.Name == nameof(ServiceProviderServiceExtensions.GetRequiredService)
+        && x.IsGenericMethodDefinition
+        && x.GetParameters().Length == 1)
+    .MakeGenericMethod(typeof(OrderTotalTextResolver));
+
+var resolveMethod = typeof(IValueResolver<Order, OrderDto, string>)
+    .GetMethod(nameof(IValueResolver<Order, OrderDto, string>.Resolve))!;
+
+var context = DynaBeeBuilder
+    .CreateAssembly("Demo.Resolvers")
+    .AddClass("OrderMapper", c => c
+        .AddMethod("Map", typeof(OrderDto), m => m
+            .WithParameter<Order>("source")
+            .WithParameter<IMapContext>("mapContext")
+            .EmitsBody(body =>
+            {
+                var source = body.Parameter<Order>("source");
+                var mapContext = body.Parameter<IMapContext>("mapContext");
+                var destination = body.DeclareLocal<OrderDto>("destination");
+                var resolver = body.DeclareLocal<OrderTotalTextResolver>("resolver");
+
+                body.Assign(destination, body.New<OrderDto>());
+                body.Assign(
+                    resolver,
+                    body.StaticCall(
+                        getRequiredService,
+                        body.Property(mapContext, nameof(IMapContext.Services))));
+                body.Assign(
+                    body.Property(destination, nameof(OrderDto.TotalText)),
+                    body.Call(resolver, resolveMethod, source, destination, mapContext));
+                body.Return(destination);
+            })))
+    .Build();
+
+public interface IMapContext
+{
+    IServiceProvider Services { get; }
+}
+
+public interface IValueResolver<in TSource, in TDestination, out TMember>
+{
+    TMember Resolve(TSource source, TDestination destination, IMapContext context);
+}
+
+public sealed class OrderTotalTextResolver
+    : IValueResolver<Order, OrderDto, string>
+{
+    public string Resolve(Order source, OrderDto destination, IMapContext context)
+        => source.Total.ToString("C");
+}
+```
+
+Generated methods can also call collaborators stored on the generated instance:
+
+```csharp
+builder.AddClass("OrderMapper", c => c
+    .AddAutoProperty<IOrderFormatter>("Formatter")
+    .AddMethod("Format", typeof(string), m => m
+        .WithParameter<Order>("source")
+        .EmitsBody(body =>
+        {
+            var formatter = body.Property(body.Self(), "Formatter");
+            var source = body.Parameter<Order>("source");
+            var format = typeof(IOrderFormatter).GetMethod(nameof(IOrderFormatter.Format))!;
+
+            body.Return(body.Call(formatter, format, source));
+        })));
+```
+
+### 6) Cached method invokers
 
 DynaBee can create cached invokers for generated methods. The invoker resolves
 reflection metadata once, compiles a dispatch bridge, and avoids `MethodInfo.Invoke(...)`

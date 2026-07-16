@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.2.2] - 2026-07-16
+
+### Added
+- Added high-level method call expressions to `IBeeMethodBodyBuilder` through `Call(...)` and `StaticCall(...)`.
+- Added `Self()` to method bodies so generated methods can access properties and fields on their own generated instance.
+- Added `Evaluate(...)` for emitting method calls or value expressions used only for side effects.
+- Added support for instance method calls, static method calls, closed generic `MethodInfo` calls, and interface method calls from generated method bodies.
+- Added generated-member lookup support so `Self()` can read generated properties and fields while the dynamic type is still being emitted.
+- Added tests for instance calls, static generic service-provider calls, interface resolver calls, self property access, method-result assignment, and incompatible call argument validation.
+
+### Changed
+- Method body call generation now validates target methods, open generics, argument counts, and argument type compatibility before emitting IL.
+- Dynamic type element build order now ensures fields and properties are defined before method bodies that may access them through `Self()`.
+
 ## [v1.2.1] - 2026-07-16
 
 ### Added

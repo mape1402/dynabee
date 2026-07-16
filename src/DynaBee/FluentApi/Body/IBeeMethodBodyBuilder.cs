@@ -6,6 +6,12 @@ namespace DynaBee.FluentApi.Body
     public interface IBeeMethodBodyBuilder
     {
         /// <summary>
+        /// Creates an expression that loads the generated instance that owns the current method.
+        /// </summary>
+        /// <returns>A value expression representing <c>this</c>.</returns>
+        IBeeValueExpression Self();
+
+        /// <summary>
         /// Gets a method parameter by name.
         /// </summary>
         /// <param name="name">Parameter name.</param>
@@ -49,6 +55,58 @@ namespace DynaBee.FluentApi.Body
         /// <typeparam name="T">Type to instantiate.</typeparam>
         /// <returns>A construction expression.</returns>
         IBeeValueExpression New<T>();
+
+        /// <summary>
+        /// Creates an instance method call expression.
+        /// </summary>
+        /// <param name="instance">Instance expression used as the call target.</param>
+        /// <param name="method">Method to call. Closed generic methods are supported.</param>
+        /// <param name="arguments">Argument expressions passed to the method.</param>
+        /// <returns>A value expression representing the method call result.</returns>
+        IBeeValueExpression Call(IBeeValueExpression instance, System.Reflection.MethodInfo method, params IBeeValueExpression[] arguments);
+
+        /// <summary>
+        /// Creates an instance method call expression by resolving a method name and exact parameter types.
+        /// </summary>
+        /// <param name="instance">Instance expression used as the call target.</param>
+        /// <param name="methodName">Method name.</param>
+        /// <param name="parameterTypes">Exact method parameter types.</param>
+        /// <param name="arguments">Argument expressions passed to the method.</param>
+        /// <returns>A value expression representing the method call result.</returns>
+        IBeeValueExpression Call(
+            IBeeValueExpression instance,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            params IBeeValueExpression[] arguments);
+
+        /// <summary>
+        /// Creates a static method call expression.
+        /// </summary>
+        /// <param name="method">Static method to call. Closed generic methods are supported.</param>
+        /// <param name="arguments">Argument expressions passed to the method.</param>
+        /// <returns>A value expression representing the method call result.</returns>
+        IBeeValueExpression StaticCall(System.Reflection.MethodInfo method, params IBeeValueExpression[] arguments);
+
+        /// <summary>
+        /// Creates a static method call expression by resolving a method name and exact parameter types.
+        /// </summary>
+        /// <param name="declaringType">Type that declares the static method.</param>
+        /// <param name="methodName">Method name.</param>
+        /// <param name="parameterTypes">Exact method parameter types.</param>
+        /// <param name="arguments">Argument expressions passed to the method.</param>
+        /// <returns>A value expression representing the method call result.</returns>
+        IBeeValueExpression StaticCall(
+            Type declaringType,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            params IBeeValueExpression[] arguments);
+
+        /// <summary>
+        /// Emits a value expression for side effects and discards any returned value.
+        /// </summary>
+        /// <param name="expression">Expression to evaluate.</param>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder Evaluate(IBeeValueExpression expression);
 
         /// <summary>
         /// Creates an instance property access expression.
