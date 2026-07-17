@@ -277,7 +277,99 @@ builder.AddClass("OrderMapper", c => c
         })));
 ```
 
-### 6) Cached method invokers
+### 6) Collection mapping method bodies
+
+Collection-oriented generated methods can use loops, ordered comparisons,
+indexed access, runtime-sized arrays, and constructor calls with arguments.
+This lets integrations generate array/list mapping logic without helper
+delegates, reflection invocation, expression compilation, or raw IL.
+
+```csharp
+var context = DynaBeeBuilder
+    .CreateAssembly("Demo.Collections")
+    .AddClass("ArrayCopier", c => c
+        .AddMethod("Copy", typeof(int[]), m => m
+            .WithParameter<int[]>("source")
+            .EmitsBody(body =>
+            {
+                var source = body.Parameter<int[]>("source");
+                var destination = body.DeclareLocal<int[]>("destination");
+                var index = body.DeclareLocal<int>("i");
+
+                body.If(body.IsNull(source), whenTrue: branch =>
+                {
+                    branch.Return(branch.Constant(null, typeof(int[])));
+                });
+
+                body.Assign(
+                    destination,
+                    body.NewArray<int>(body.Property(source, nameof(Array.Length))));
+
+                body.For(
+                    initialize: loop => loop.Assign(index, loop.Constant(0)),
+                    condition: loop => loop.LessThan(
+                        index,
+                        loop.Property(source, nameof(Array.Length))),
+                    increment: loop => loop.Assign(
+                        index,
+                        loop.Add(index, loop.Constant(1))),
+                    body: loop => loop.Assign(
+                        loop.Index(destination, index),
+                        loop.Index(source, index)));
+
+                body.Return(destination);
+            })))
+    .Build();
+```
+
+The same primitives can generate list transformations with per-item method calls:
+
+```csharp
+var addMethod = typeof(List<OrderItemDto>)
+    .GetMethod(nameof(List<OrderItemDto>.Add))!;
+var mapMethod = typeof(IItemMapper)
+    .GetMethod(nameof(IItemMapper.Map))!;
+
+builder.AddClass("ItemMapperAdapter", c => c
+    .AddMethod("MapItems", typeof(List<OrderItemDto>), m => m
+        .WithParameter<List<OrderItem>>("source")
+        .WithParameter<IItemMapper>("mapper")
+        .EmitsBody(body =>
+        {
+            var source = body.Parameter<List<OrderItem>>("source");
+            var mapper = body.Parameter<IItemMapper>("mapper");
+            var destination = body.DeclareLocal<List<OrderItemDto>>("destination");
+            var index = body.DeclareLocal<int>("i");
+
+            body.If(body.IsNull(source), whenTrue: branch =>
+            {
+                branch.Return(branch.Constant(null, typeof(List<OrderItemDto>)));
+            });
+
+            body.Assign(
+                destination,
+                body.New(
+                    typeof(List<OrderItemDto>),
+                    body.Property(source, nameof(List<OrderItem>.Count))));
+
+            body.For(
+                initialize: loop => loop.Assign(index, loop.Constant(0)),
+                condition: loop => loop.LessThan(
+                    index,
+                    loop.Property(source, nameof(List<OrderItem>.Count))),
+                increment: loop => loop.Assign(
+                    index,
+                    loop.Add(index, loop.Constant(1))),
+                body: loop => loop.Evaluate(loop.Call(
+                    destination,
+                    addMethod,
+                    loop.Call(mapper, mapMethod, loop.Index(source, index)))));
+
+            body.Return(destination);
+        })));
+```
+
+### 7) Cached method invokers
 
 DynaBee can create cached invokers for generated methods. The invoker resolves
 reflection metadata once, compiles a dispatch bridge, and avoids `MethodInfo.Invoke(...)`

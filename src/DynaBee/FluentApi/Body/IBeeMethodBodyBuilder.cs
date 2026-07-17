@@ -50,11 +50,89 @@ namespace DynaBee.FluentApi.Body
         IBeeValueExpression New(Type type);
 
         /// <summary>
+        /// Creates a value expression that constructs an object using a matching constructor.
+        /// </summary>
+        /// <param name="type">Type to instantiate.</param>
+        /// <param name="arguments">Constructor argument expressions.</param>
+        /// <returns>A construction expression.</returns>
+        IBeeValueExpression New(Type type, params IBeeValueExpression[] arguments);
+
+        /// <summary>
         /// Creates a typed value expression that constructs an object using its parameterless constructor.
         /// </summary>
         /// <typeparam name="T">Type to instantiate.</typeparam>
         /// <returns>A construction expression.</returns>
         IBeeValueExpression New<T>();
+
+        /// <summary>
+        /// Creates a value expression that constructs a one-dimensional array with a runtime length.
+        /// </summary>
+        /// <param name="elementType">Array element type.</param>
+        /// <param name="length">Array length expression.</param>
+        /// <returns>An array construction expression.</returns>
+        IBeeValueExpression NewArray(Type elementType, IBeeValueExpression length);
+
+        /// <summary>
+        /// Creates a typed value expression that constructs a one-dimensional array with a runtime length.
+        /// </summary>
+        /// <typeparam name="TElement">Array element type.</typeparam>
+        /// <param name="length">Array length expression.</param>
+        /// <returns>An array construction expression.</returns>
+        IBeeValueExpression NewArray<TElement>(IBeeValueExpression length);
+
+        /// <summary>
+        /// Creates an array or indexer access expression.
+        /// </summary>
+        /// <param name="instance">Array or indexer-owning instance expression.</param>
+        /// <param name="index">Index expression.</param>
+        /// <returns>An assignable index expression when the target supports assignment.</returns>
+        IBeeAssignableExpression Index(IBeeValueExpression instance, IBeeValueExpression index);
+
+        /// <summary>
+        /// Creates a less-than comparison expression.
+        /// </summary>
+        /// <param name="left">Left value.</param>
+        /// <param name="right">Right value.</param>
+        /// <returns>A boolean expression.</returns>
+        IBeeValueExpression LessThan(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a less-than-or-equal comparison expression.
+        /// </summary>
+        /// <param name="left">Left value.</param>
+        /// <param name="right">Right value.</param>
+        /// <returns>A boolean expression.</returns>
+        IBeeValueExpression LessThanOrEqual(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a greater-than comparison expression.
+        /// </summary>
+        /// <param name="left">Left value.</param>
+        /// <param name="right">Right value.</param>
+        /// <returns>A boolean expression.</returns>
+        IBeeValueExpression GreaterThan(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a greater-than-or-equal comparison expression.
+        /// </summary>
+        /// <param name="left">Left value.</param>
+        /// <param name="right">Right value.</param>
+        /// <returns>A boolean expression.</returns>
+        IBeeValueExpression GreaterThanOrEqual(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Emits a for loop statement.
+        /// </summary>
+        /// <param name="initialize">Loop initialization block.</param>
+        /// <param name="condition">Loop condition expression factory. The expression must be boolean.</param>
+        /// <param name="increment">Loop increment block.</param>
+        /// <param name="body">Loop body block.</param>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder For(
+            Action<IBeeMethodBodyBuilder> initialize,
+            Func<IBeeMethodBodyBuilder, IBeeValueExpression> condition,
+            Action<IBeeMethodBodyBuilder> increment,
+            Action<IBeeMethodBodyBuilder> body);
 
         /// <summary>
         /// Creates an instance method call expression.
