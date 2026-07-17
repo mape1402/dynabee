@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.2.3] - 2026-07-17
+
+### Added
+- Added method body loop generation through `IBeeMethodBodyBuilder.For(...)`.
+- Added ordered comparison expressions: `LessThan(...)`, `LessThanOrEqual(...)`, `GreaterThan(...)`, and `GreaterThanOrEqual(...)`.
+- Added indexed access expressions through `Index(...)` for one-dimensional arrays and indexer properties such as `List<T>[int]`.
+- Added runtime-sized array creation through `NewArray(...)`.
+- Added constructor calls with arguments through `New(Type, params IBeeValueExpression[])`.
+- Added collection mapping tests for array copy, list copy, list item transformation, and collection member assignment.
+
+### Changed
+- Constructor, array length, index, loop condition, and comparison generation now fail early for unsupported or incompatible operands before emitting IL.
+
 ## [v1.2.2] - 2026-07-16
 
 ### Added

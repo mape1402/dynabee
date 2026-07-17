@@ -82,11 +82,114 @@ namespace DynaBee.FluentApi.Body
             if (type == null)
                 throw new ArgumentNullException(nameof(type));
 
-            return new BeeNewExpression(type);
+            return new BeeNewExpression(type, Array.Empty<BeeValueExpression>());
+        }
+
+        public IBeeValueExpression New(Type type, params IBeeValueExpression[] arguments)
+        {
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+
+            var argumentExpressions = (arguments ?? Array.Empty<IBeeValueExpression>())
+                .Select(RequireExpression)
+                .ToArray();
+
+            return new BeeNewExpression(type, argumentExpressions);
         }
 
         public IBeeValueExpression New<T>()
             => New(typeof(T));
+
+        public IBeeValueExpression NewArray(Type elementType, IBeeValueExpression length)
+        {
+            if (elementType == null)
+                throw new ArgumentNullException(nameof(elementType));
+
+            var lengthExpression = RequireExpression(length);
+            if (!BeeIlConversions.CanConvert(lengthExpression.Type, typeof(int)))
+                throw new InvalidOperationException($"Array length type '{lengthExpression.Type}' cannot be converted to '{typeof(int)}'.");
+
+            return new BeeNewArrayExpression(elementType, lengthExpression);
+        }
+
+        public IBeeValueExpression NewArray<TElement>(IBeeValueExpression length)
+            => NewArray(typeof(TElement), length);
+
+        public IBeeAssignableExpression Index(IBeeValueExpression instance, IBeeValueExpression index)
+        {
+            if (instance == null)
+                throw new ArgumentNullException(nameof(instance));
+
+            if (index == null)
+                throw new ArgumentNullException(nameof(index));
+
+            var instanceExpression = RequireExpression(instance);
+            var indexExpression = RequireExpression(index);
+
+            if (instanceExpression.Type.IsArray)
+            {
+                if (instanceExpression.Type.GetArrayRank() != 1)
+                    throw new NotSupportedException("Only one-dimensional arrays are supported.");
+
+                if (!BeeIlConversions.CanConvert(indexExpression.Type, typeof(int)))
+                    throw new InvalidOperationException($"Array index type '{indexExpression.Type}' cannot be converted to '{typeof(int)}'.");
+
+                return new BeeArrayIndexExpression(instanceExpression, indexExpression);
+            }
+
+            var indexer = ResolveIndexer(instanceExpression.Type, indexExpression.Type);
+            return new BeeIndexerExpression(instanceExpression, indexExpression, indexer);
+        }
+
+        public IBeeValueExpression LessThan(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeOrderedComparisonExpression(RequireExpression(left), RequireExpression(right), BeeOrderedComparisonKind.LessThan);
+
+        public IBeeValueExpression LessThanOrEqual(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeOrderedComparisonExpression(RequireExpression(left), RequireExpression(right), BeeOrderedComparisonKind.LessThanOrEqual);
+
+        public IBeeValueExpression GreaterThan(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeOrderedComparisonExpression(RequireExpression(left), RequireExpression(right), BeeOrderedComparisonKind.GreaterThan);
+
+        public IBeeValueExpression GreaterThanOrEqual(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeOrderedComparisonExpression(RequireExpression(left), RequireExpression(right), BeeOrderedComparisonKind.GreaterThanOrEqual);
+
+        public IBeeMethodBodyBuilder For(
+            Action<IBeeMethodBodyBuilder> initialize,
+            Func<IBeeMethodBodyBuilder, IBeeValueExpression> condition,
+            Action<IBeeMethodBodyBuilder> increment,
+            Action<IBeeMethodBodyBuilder> body)
+        {
+            if (initialize == null)
+                throw new ArgumentNullException(nameof(initialize));
+
+            if (condition == null)
+                throw new ArgumentNullException(nameof(condition));
+
+            if (increment == null)
+                throw new ArgumentNullException(nameof(increment));
+
+            if (body == null)
+                throw new ArgumentNullException(nameof(body));
+
+            var startLabel = _il.DefineLabel();
+            var endLabel = _il.DefineLabel();
+
+            initialize(this);
+            _il.MarkLabel(startLabel);
+
+            var conditionExpression = RequireExpression(condition(this));
+            if (conditionExpression.Type != typeof(bool))
+                throw new InvalidOperationException($"Loop condition must be '{typeof(bool)}', not '{conditionExpression.Type}'.");
+
+            conditionExpression.EmitLoad(_il);
+            _il.Emit(OpCodes.Brfalse, endLabel);
+            body(this);
+            increment(this);
+            _il.Emit(OpCodes.Br, startLabel);
+            _il.MarkLabel(endLabel);
+
+            return this;
+        }
 
         public IBeeValueExpression Call(IBeeValueExpression instance, MethodInfo method, params IBeeValueExpression[] arguments)
         {
@@ -399,6 +502,44 @@ namespace DynaBee.FluentApi.Body
         private static MethodInfo ResolveStaticMethod(Type declaringType, string methodName, IReadOnlyList<Type> parameterTypes)
             => ResolveMethod(declaringType, methodName, parameterTypes, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
 
+        private static PropertyInfo ResolveIndexer(Type declaringType, Type indexType)
+        {
+            var matches = declaringType
+                .GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .Where(x => x.GetIndexParameters().Length == 1)
+                .Where(x => BeeIlConversions.CanConvert(indexType, x.GetIndexParameters()[0].ParameterType))
+                .ToArray();
+
+            var publicMatches = matches
+                .Where(x => x.GetGetMethod(false) != null || x.GetSetMethod(false) != null)
+                .ToArray();
+
+            if (publicMatches.Length > 0)
+                matches = publicMatches;
+
+            var exactMatches = matches
+                .Where(x => x.GetIndexParameters()[0].ParameterType == indexType)
+                .ToArray();
+
+            if (exactMatches.Length > 0)
+                matches = exactMatches;
+
+            var defaultItemMatches = matches
+                .Where(x => string.Equals(x.Name, "Item", StringComparison.Ordinal))
+                .ToArray();
+
+            if (defaultItemMatches.Length > 0)
+                matches = defaultItemMatches;
+
+            if (matches.Length == 0)
+                throw new MissingMemberException(declaringType.FullName, $"indexer[{indexType}]");
+
+            if (matches.Length > 1)
+                throw new AmbiguousMatchException($"More than one indexer on '{declaringType}' accepts index type '{indexType}'.");
+
+            return matches[0];
+        }
+
         private static MethodInfo ResolveMethod(Type declaringType, string methodName, IReadOnlyList<Type> parameterTypes, BindingFlags bindingFlags)
         {
             var matches = declaringType
@@ -563,15 +704,73 @@ namespace DynaBee.FluentApi.Body
     internal sealed class BeeNewExpression : BeeValueExpression
     {
         private readonly ConstructorInfo _constructor;
+        private readonly BeeValueExpression[] _arguments;
 
-        public BeeNewExpression(Type type) : base(type)
+        public BeeNewExpression(Type type, BeeValueExpression[] arguments) : base(type)
         {
-            _constructor = type.GetConstructor(Type.EmptyTypes)
-                ?? throw new MissingMethodException(type.FullName, ".ctor()");
+            _arguments = arguments ?? throw new ArgumentNullException(nameof(arguments));
+            _constructor = ResolveConstructor(type, _arguments);
         }
 
         public override void EmitLoad(ILGenerator il)
-            => il.Emit(OpCodes.Newobj, _constructor);
+        {
+            var parameters = _constructor.GetParameters();
+            for (var i = 0; i < _arguments.Length; i++)
+                BeeMethodBodyBuilder.EmitLoadWithConversion(il, _arguments[i], parameters[i].ParameterType);
+
+            il.Emit(OpCodes.Newobj, _constructor);
+        }
+
+        private static ConstructorInfo ResolveConstructor(Type type, BeeValueExpression[] arguments)
+        {
+            var matches = type
+                .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .Where(x => ConstructorMatches(x.GetParameters(), arguments))
+                .ToArray();
+
+            if (matches.Length == 0)
+                throw new MissingMethodException(type.FullName, FormatConstructor(arguments));
+
+            if (matches.Length > 1)
+                throw new AmbiguousMatchException($"More than one constructor on '{type}' accepts ({string.Join(", ", arguments.Select(x => x.Type))}).");
+
+            return matches[0];
+        }
+
+        private static bool ConstructorMatches(ParameterInfo[] parameters, BeeValueExpression[] arguments)
+        {
+            if (parameters.Length != arguments.Length)
+                return false;
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                if (!BeeIlConversions.CanConvert(arguments[i].Type, parameters[i].ParameterType))
+                    return false;
+            }
+
+            return true;
+        }
+
+        private static string FormatConstructor(BeeValueExpression[] arguments)
+            => $".ctor({string.Join(", ", arguments.Select(x => x.Type.FullName ?? x.Type.Name))})";
+    }
+
+    internal sealed class BeeNewArrayExpression : BeeValueExpression
+    {
+        private readonly Type _elementType;
+        private readonly BeeValueExpression _length;
+
+        public BeeNewArrayExpression(Type elementType, BeeValueExpression length) : base(elementType.MakeArrayType())
+        {
+            _elementType = elementType;
+            _length = length;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            BeeMethodBodyBuilder.EmitLoadWithConversion(il, _length, typeof(int));
+            il.Emit(OpCodes.Newarr, _elementType);
+        }
     }
 
     internal sealed class BeePropertyExpression : BeeAssignableExpression
@@ -667,6 +866,103 @@ namespace DynaBee.FluentApi.Body
             BeeMethodBodyBuilder.EmitLoadWithConversion(il, value, Type);
             il.Emit(OpCodes.Stfld, _field);
         }
+    }
+
+    internal sealed class BeeArrayIndexExpression : BeeAssignableExpression
+    {
+        private readonly BeeValueExpression _array;
+        private readonly BeeValueExpression _index;
+        private readonly Type _elementType;
+
+        public BeeArrayIndexExpression(BeeValueExpression array, BeeValueExpression index)
+            : base(array.Type.GetElementType()!)
+        {
+            _array = array;
+            _index = index;
+            _elementType = Type;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            _array.EmitLoad(il);
+            BeeMethodBodyBuilder.EmitLoadWithConversion(il, _index, typeof(int));
+            EmitLoadElement(il, _elementType);
+        }
+
+        public override void EmitAssign(ILGenerator il, BeeValueExpression value)
+        {
+            _array.EmitLoad(il);
+            BeeMethodBodyBuilder.EmitLoadWithConversion(il, _index, typeof(int));
+            BeeMethodBodyBuilder.EmitLoadWithConversion(il, value, _elementType);
+            EmitStoreElement(il, _elementType);
+        }
+
+        private static void EmitLoadElement(ILGenerator il, Type elementType)
+        {
+            if (!elementType.IsValueType)
+                il.Emit(OpCodes.Ldelem_Ref);
+            else if (elementType == typeof(int)) il.Emit(OpCodes.Ldelem_I4);
+            else if (elementType == typeof(long)) il.Emit(OpCodes.Ldelem_I8);
+            else if (elementType == typeof(float)) il.Emit(OpCodes.Ldelem_R4);
+            else if (elementType == typeof(double)) il.Emit(OpCodes.Ldelem_R8);
+            else if (elementType == typeof(short)) il.Emit(OpCodes.Ldelem_I2);
+            else if (elementType == typeof(byte)) il.Emit(OpCodes.Ldelem_U1);
+            else il.Emit(OpCodes.Ldelem, elementType);
+        }
+
+        private static void EmitStoreElement(ILGenerator il, Type elementType)
+        {
+            if (!elementType.IsValueType)
+                il.Emit(OpCodes.Stelem_Ref);
+            else if (elementType == typeof(int)) il.Emit(OpCodes.Stelem_I4);
+            else if (elementType == typeof(long)) il.Emit(OpCodes.Stelem_I8);
+            else if (elementType == typeof(float)) il.Emit(OpCodes.Stelem_R4);
+            else if (elementType == typeof(double)) il.Emit(OpCodes.Stelem_R8);
+            else if (elementType == typeof(short)) il.Emit(OpCodes.Stelem_I2);
+            else if (elementType == typeof(byte)) il.Emit(OpCodes.Stelem_I1);
+            else il.Emit(OpCodes.Stelem, elementType);
+        }
+    }
+
+    internal sealed class BeeIndexerExpression : BeeAssignableExpression
+    {
+        private readonly BeeValueExpression _instance;
+        private readonly BeeValueExpression _index;
+        private readonly PropertyInfo _property;
+        private readonly Type _indexType;
+
+        public BeeIndexerExpression(BeeValueExpression instance, BeeValueExpression index, PropertyInfo property)
+            : base(property.PropertyType)
+        {
+            _instance = instance;
+            _index = index;
+            _property = property;
+            _indexType = property.GetIndexParameters()[0].ParameterType;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            var getter = _property.GetGetMethod(true)
+                ?? throw new InvalidOperationException($"Indexer '{_property.Name}' has no getter.");
+
+            _instance.EmitLoad(il);
+            BeeMethodBodyBuilder.EmitLoadWithConversion(il, _index, _indexType);
+            il.Emit(ShouldCallVirtual(getter) ? OpCodes.Callvirt : OpCodes.Call, getter);
+        }
+
+        public override void EmitAssign(ILGenerator il, BeeValueExpression value)
+        {
+            var setter = _property.GetSetMethod(true)
+                ?? throw new InvalidOperationException($"Indexer '{_property.Name}' has no setter.");
+
+            _instance.EmitLoad(il);
+            BeeMethodBodyBuilder.EmitLoadWithConversion(il, _index, _indexType);
+            BeeMethodBodyBuilder.EmitLoadWithConversion(il, value, Type);
+            il.Emit(ShouldCallVirtual(setter) ? OpCodes.Callvirt : OpCodes.Call, setter);
+        }
+
+        private static bool ShouldCallVirtual(MethodInfo method)
+            => method.IsVirtual && !method.IsFinal && !method.DeclaringType!.IsValueType;
     }
 
     internal sealed class BeeStaticPropertyExpression : BeeAssignableExpression
@@ -822,6 +1118,86 @@ namespace DynaBee.FluentApi.Body
 
         private static bool ShouldCallVirtual(MethodInfo method)
             => !method.IsStatic && method.IsVirtual && !method.IsFinal && !method.DeclaringType!.IsValueType;
+    }
+
+    internal enum BeeOrderedComparisonKind
+    {
+        LessThan,
+        LessThanOrEqual,
+        GreaterThan,
+        GreaterThanOrEqual
+    }
+
+    internal sealed class BeeOrderedComparisonExpression : BeeValueExpression
+    {
+        private readonly BeeValueExpression _left;
+        private readonly BeeValueExpression _right;
+        private readonly BeeOrderedComparisonKind _kind;
+        private readonly Type _comparisonType;
+
+        public BeeOrderedComparisonExpression(BeeValueExpression left, BeeValueExpression right, BeeOrderedComparisonKind kind)
+            : base(typeof(bool))
+        {
+            _left = left;
+            _right = right;
+            _kind = kind;
+            _comparisonType = ResolveComparisonType(left.Type, right.Type);
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            _left.EmitLoad(il);
+            BeeIlConversions.EmitConvert(_left.Type, _comparisonType, il);
+            _right.EmitLoad(il);
+            BeeIlConversions.EmitConvert(_right.Type, _comparisonType, il);
+
+            switch (_kind)
+            {
+                case BeeOrderedComparisonKind.LessThan:
+                    il.Emit(OpCodes.Clt);
+                    break;
+                case BeeOrderedComparisonKind.GreaterThan:
+                    il.Emit(OpCodes.Cgt);
+                    break;
+                case BeeOrderedComparisonKind.LessThanOrEqual:
+                    il.Emit(OpCodes.Cgt);
+                    il.Emit(OpCodes.Ldc_I4_0);
+                    il.Emit(OpCodes.Ceq);
+                    break;
+                case BeeOrderedComparisonKind.GreaterThanOrEqual:
+                    il.Emit(OpCodes.Clt);
+                    il.Emit(OpCodes.Ldc_I4_0);
+                    il.Emit(OpCodes.Ceq);
+                    break;
+                default:
+                    throw new NotSupportedException($"Comparison '{_kind}' is not supported.");
+            }
+        }
+
+        private static Type ResolveComparisonType(Type leftType, Type rightType)
+        {
+            if (!IsSupportedNumeric(leftType) || !IsSupportedNumeric(rightType))
+                throw new NotSupportedException($"Ordered comparison between '{leftType}' and '{rightType}' is not supported.");
+
+            if (leftType == typeof(double) || rightType == typeof(double))
+                return typeof(double);
+
+            if (leftType == typeof(float) || rightType == typeof(float))
+                return typeof(float);
+
+            if (leftType == typeof(long) || rightType == typeof(long))
+                return typeof(long);
+
+            return typeof(int);
+        }
+
+        private static bool IsSupportedNumeric(Type type)
+            => type == typeof(byte)
+               || type == typeof(short)
+               || type == typeof(int)
+               || type == typeof(long)
+               || type == typeof(float)
+               || type == typeof(double);
     }
 
     internal sealed class BeeComparisonExpression : BeeValueExpression

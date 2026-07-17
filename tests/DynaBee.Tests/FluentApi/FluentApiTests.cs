@@ -1090,6 +1090,157 @@ namespace DynaBee.Tests.FluentApi
         }
 
         [Fact]
+        public void EmitsBody_Can_Copy_Array_With_For_Loop()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.ArrayCopy")
+                .AddClass("ArrayCopier", c => c
+                    .AddMethod("Copy", typeof(int[]), m => m
+                        .WithParameter<int[]>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<int[]>("source");
+                            var destination = body.DeclareLocal<int[]>("destination");
+                            var index = body.DeclareLocal<int>("i");
+
+                            body.If(body.IsNull(source), whenTrue: branch =>
+                            {
+                                branch.Return(branch.Constant(null, typeof(int[])));
+                            });
+
+                            body.Assign(destination, body.NewArray<int>(body.Property(source, nameof(Array.Length))));
+                            body.For(
+                                initialize: loop => loop.Assign(index, loop.Constant(0)),
+                                condition: loop => loop.LessThan(index, loop.Property(source, nameof(Array.Length))),
+                                increment: loop => loop.Assign(index, loop.Add(index, loop.Constant(1))),
+                                body: loop => loop.Assign(loop.Index(destination, index), loop.Index(source, index)));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var copier = Activator.CreateInstance(context.GetClrType("ArrayCopier"))!;
+            var copy = (int[])copier.GetType().GetMethod("Copy")!.Invoke(copier, new object[] { new[] { 1, 2, 3 } })!;
+            var nullCopy = copier.GetType().GetMethod("Copy")!.Invoke(copier, new object[] { null });
+
+            Assert.Equal(new[] { 1, 2, 3 }, copy);
+            Assert.Null(nullCopy);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Copy_List_With_For_Loop()
+        {
+            var addMethod = typeof(List<string>).GetMethod(nameof(List<string>.Add))!;
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.ListCopy")
+                .AddClass("ListCopier", c => c
+                    .AddMethod("Copy", typeof(List<string>), m => m
+                        .WithParameter<List<string>>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<List<string>>("source");
+                            var destination = body.DeclareLocal<List<string>>("destination");
+                            var index = body.DeclareLocal<int>("i");
+
+                            body.If(body.IsNull(source), whenTrue: branch =>
+                            {
+                                branch.Return(branch.Constant(null, typeof(List<string>)));
+                            });
+
+                            body.Assign(destination, body.New(typeof(List<string>), body.Property(source, nameof(List<string>.Count))));
+                            body.For(
+                                initialize: loop => loop.Assign(index, loop.Constant(0)),
+                                condition: loop => loop.LessThan(index, loop.Property(source, nameof(List<string>.Count))),
+                                increment: loop => loop.Assign(index, loop.Add(index, loop.Constant(1))),
+                                body: loop => loop.Evaluate(loop.Call(destination, addMethod, loop.Index(source, index))));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var copier = Activator.CreateInstance(context.GetClrType("ListCopier"))!;
+            var copy = (List<string>)copier.GetType().GetMethod("Copy")!.Invoke(copier, new object[] { new List<string> { "a", "b" } })!;
+            var nullCopy = copier.GetType().GetMethod("Copy")!.Invoke(copier, new object[] { null });
+
+            Assert.Equal(new[] { "a", "b" }, copy);
+            Assert.Null(nullCopy);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Transform_List_With_Method_Call()
+        {
+            var addMethod = typeof(List<OrderItemDto>).GetMethod(nameof(List<OrderItemDto>.Add))!;
+            var mapMethod = typeof(IItemMapper).GetMethod(nameof(IItemMapper.Map))!;
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.ListTransform")
+                .AddClass("ItemMapperAdapter", c => c
+                    .AddMethod("MapItems", typeof(List<OrderItemDto>), m => m
+                        .WithParameter<List<OrderItem>>("source")
+                        .WithParameter<IItemMapper>("mapper")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<List<OrderItem>>("source");
+                            var mapper = body.Parameter<IItemMapper>("mapper");
+                            var destination = body.DeclareLocal<List<OrderItemDto>>("destination");
+                            var index = body.DeclareLocal<int>("i");
+
+                            body.If(body.IsNull(source), whenTrue: branch =>
+                            {
+                                branch.Return(branch.Constant(null, typeof(List<OrderItemDto>)));
+                            });
+
+                            body.Assign(destination, body.New(typeof(List<OrderItemDto>), body.Property(source, nameof(List<OrderItem>.Count))));
+                            body.For(
+                                initialize: loop => loop.Assign(index, loop.Constant(0)),
+                                condition: loop => loop.LessThan(index, loop.Property(source, nameof(List<OrderItem>.Count))),
+                                increment: loop => loop.Assign(index, loop.Add(index, loop.Constant(1))),
+                                body: loop => loop.Evaluate(loop.Call(
+                                    destination,
+                                    addMethod,
+                                    loop.Call(mapper, mapMethod, loop.Index(source, index)))));
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var adapter = Activator.CreateInstance(context.GetClrType("ItemMapperAdapter"))!;
+            var result = (List<OrderItemDto>)adapter.GetType().GetMethod("MapItems")!.Invoke(
+                adapter,
+                new object[] { new List<OrderItem> { new() { Name = "coffee" }, new() { Name = "tea" } }, new TestItemMapper() })!;
+
+            Assert.Equal(new[] { "COFFEE", "TEA" }, result.Select(x => x.Name).ToArray());
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Assign_Collection_Member()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.CollectionAssignment")
+                .AddClass("OrderMapper", c => c
+                    .AddMethod("Map", typeof(OrderWithItemDtos), m => m
+                        .WithParameter<OrderWithItems>("source")
+                        .WithParameter<List<OrderItemDto>>("items")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<OrderWithItems>("source");
+                            var items = body.Parameter<List<OrderItemDto>>("items");
+                            var destination = body.DeclareLocal<OrderWithItemDtos>("destination");
+
+                            body.Assign(destination, body.New<OrderWithItemDtos>());
+                            body.Assign(body.Property(destination, nameof(OrderWithItemDtos.Id)), body.Property(source, nameof(OrderWithItems.Id)));
+                            body.Assign(body.Property(destination, nameof(OrderWithItemDtos.Items)), items);
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("OrderMapper"))!;
+            var items = new List<OrderItemDto> { new() { Name = "mapped" } };
+            var result = (OrderWithItemDtos)mapper.GetType().GetMethod("Map")!.Invoke(
+                mapper,
+                new object[] { new OrderWithItems { Id = 10 }, items })!;
+
+            Assert.Equal(10, result.Id);
+            Assert.Same(items, result.Items);
+        }
+
+        [Fact]
         public void CreateBoundMethodInvoker_Can_Invoke_Single_Source_Runtime_Mapper()
         {
             var context = DynaBeeBuilder
@@ -1335,6 +1486,41 @@ namespace DynaBee.Tests.FluentApi
 
             public string FormatCount(int count)
                 => $"Count: {count}";
+        }
+
+        public interface IItemMapper
+        {
+            OrderItemDto Map(OrderItem item);
+        }
+
+        public sealed class TestItemMapper : IItemMapper
+        {
+            public OrderItemDto Map(OrderItem item)
+                => new() { Name = item.Name.ToUpperInvariant() };
+        }
+
+        public sealed class OrderItem
+        {
+            public string Name { get; set; }
+        }
+
+        public sealed class OrderItemDto
+        {
+            public string Name { get; set; }
+        }
+
+        public sealed class OrderWithItems
+        {
+            public int Id { get; set; }
+
+            public List<OrderItem> Items { get; set; }
+        }
+
+        public sealed class OrderWithItemDtos
+        {
+            public int Id { get; set; }
+
+            public List<OrderItemDto> Items { get; set; }
         }
 
         public sealed class AdvancedSource
