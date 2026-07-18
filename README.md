@@ -203,44 +203,52 @@ IL in integrations.
 
 ```csharp
 using DynaBee.FluentApi;
+using DynaBee.FluentApi.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 
-var getRequiredService = typeof(ServiceProviderServiceExtensions)
-    .GetMethods()
-    .Single(x => x.Name == nameof(ServiceProviderServiceExtensions.GetRequiredService)
-        && x.IsGenericMethodDefinition
-        && x.GetParameters().Length == 1)
-    .MakeGenericMethod(typeof(OrderTotalTextResolver));
+public sealed class ResolverProfile : DynaBeeProfile
+{
+    public ResolverProfile() : base("Demo.Resolvers")
+    {
+    }
 
-var resolveMethod = typeof(IValueResolver<Order, OrderDto, string>)
-    .GetMethod(nameof(IValueResolver<Order, OrderDto, string>.Resolve))!;
+    public override void Configure(IBeeAssemblyBuilder builder)
+    {
+        var getRequiredService = typeof(ServiceProviderServiceExtensions)
+            .GetMethods()
+            .Single(x => x.Name == nameof(ServiceProviderServiceExtensions.GetRequiredService)
+                && x.IsGenericMethodDefinition
+                && x.GetParameters().Length == 1)
+            .MakeGenericMethod(typeof(OrderTotalTextResolver));
 
-var context = DynaBeeBuilder
-    .CreateAssembly("Demo.Resolvers")
-    .AddClass("OrderMapper", c => c
-        .AddMethod("Map", typeof(OrderDto), m => m
-            .WithParameter<Order>("source")
-            .WithParameter<IMapContext>("mapContext")
-            .EmitsBody(body =>
-            {
-                var source = body.Parameter<Order>("source");
-                var mapContext = body.Parameter<IMapContext>("mapContext");
-                var destination = body.DeclareLocal<OrderDto>("destination");
-                var resolver = body.DeclareLocal<OrderTotalTextResolver>("resolver");
+        var resolveMethod = typeof(IValueResolver<Order, OrderDto, string>)
+            .GetMethod(nameof(IValueResolver<Order, OrderDto, string>.Resolve))!;
 
-                body.Assign(destination, body.New<OrderDto>());
-                body.Assign(
-                    resolver,
-                    body.StaticCall(
-                        getRequiredService,
-                        body.Property(mapContext, nameof(IMapContext.Services))));
-                body.Assign(
-                    body.Property(destination, nameof(OrderDto.TotalText)),
-                    body.Call(resolver, resolveMethod, source, destination, mapContext));
-                body.Return(destination);
-            })))
-    .Build();
+        builder.AddClass("OrderMapper", c => c
+            .AddMethod("Map", typeof(OrderDto), m => m
+                .WithParameter<Order>("source")
+                .WithParameter<IMapContext>("mapContext")
+                .EmitsBody(body =>
+                {
+                    var source = body.Parameter<Order>("source");
+                    var mapContext = body.Parameter<IMapContext>("mapContext");
+                    var destination = body.DeclareLocal<OrderDto>("destination");
+                    var resolver = body.DeclareLocal<OrderTotalTextResolver>("resolver");
+
+                    body.Assign(destination, body.New<OrderDto>());
+                    body.Assign(
+                        resolver,
+                        body.StaticCall(
+                            getRequiredService,
+                            body.Property(mapContext, nameof(IMapContext.Services))));
+                    body.Assign(
+                        body.Property(destination, nameof(OrderDto.TotalText)),
+                        body.Call(resolver, resolveMethod, source, destination, mapContext));
+                    body.Return(destination);
+                })));
+    }
+}
 
 public interface IMapContext
 {
@@ -285,41 +293,48 @@ This lets integrations generate array/list mapping logic without helper
 delegates, reflection invocation, expression compilation, or raw IL.
 
 ```csharp
-var context = DynaBeeBuilder
-    .CreateAssembly("Demo.Collections")
-    .AddClass("ArrayCopier", c => c
-        .AddMethod("Copy", typeof(int[]), m => m
-            .WithParameter<int[]>("source")
-            .EmitsBody(body =>
-            {
-                var source = body.Parameter<int[]>("source");
-                var destination = body.DeclareLocal<int[]>("destination");
-                var index = body.DeclareLocal<int>("i");
+public sealed class CollectionProfile : DynaBeeProfile
+{
+    public CollectionProfile() : base("Demo.Collections")
+    {
+    }
 
-                body.If(body.IsNull(source), whenTrue: branch =>
+    public override void Configure(IBeeAssemblyBuilder builder)
+    {
+        builder.AddClass("ArrayCopier", c => c
+            .AddMethod("Copy", typeof(int[]), m => m
+                .WithParameter<int[]>("source")
+                .EmitsBody(body =>
                 {
-                    branch.Return(branch.Constant(null, typeof(int[])));
-                });
+                    var source = body.Parameter<int[]>("source");
+                    var destination = body.DeclareLocal<int[]>("destination");
+                    var index = body.DeclareLocal<int>("i");
 
-                body.Assign(
-                    destination,
-                    body.NewArray<int>(body.Property(source, nameof(Array.Length))));
+                    body.If(body.IsNull(source), whenTrue: branch =>
+                    {
+                        branch.Return(branch.Constant(null, typeof(int[])));
+                    });
 
-                body.For(
-                    initialize: loop => loop.Assign(index, loop.Constant(0)),
-                    condition: loop => loop.LessThan(
-                        index,
-                        loop.Property(source, nameof(Array.Length))),
-                    increment: loop => loop.Assign(
-                        index,
-                        loop.Add(index, loop.Constant(1))),
-                    body: loop => loop.Assign(
-                        loop.Index(destination, index),
-                        loop.Index(source, index)));
+                    body.Assign(
+                        destination,
+                        body.NewArray<int>(body.Property(source, nameof(Array.Length))));
 
-                body.Return(destination);
-            })))
-    .Build();
+                    body.For(
+                        initialize: loop => loop.Assign(index, loop.Constant(0)),
+                        condition: loop => loop.LessThan(
+                            index,
+                            loop.Property(source, nameof(Array.Length))),
+                        increment: loop => loop.Assign(
+                            index,
+                            loop.Add(index, loop.Constant(1))),
+                        body: loop => loop.Assign(
+                            loop.Index(destination, index),
+                            loop.Index(source, index)));
+
+                    body.Return(destination);
+                })));
+    }
+}
 ```
 
 The same primitives can generate list transformations with per-item method calls:
@@ -393,8 +408,7 @@ builder.AddClass("EnumerableCopier", c => c
         })));
 ```
 
-Method bodies can also express richer `MapFrom(...)`-style values without
-falling back to raw IL:
+Method bodies can also express richer computed values without falling back to raw IL:
 
 ```csharp
 builder.AddClass("ExpressionMapper", c => c
