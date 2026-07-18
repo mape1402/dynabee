@@ -191,6 +191,61 @@ namespace DynaBee.FluentApi.Body
             return this;
         }
 
+        public IBeeMethodBodyBuilder ForEach(
+            IBeeValueExpression source,
+            string itemName,
+            Action<IBeeLocal, IBeeMethodBodyBuilder> body)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+
+            if (string.IsNullOrWhiteSpace(itemName))
+                throw new ArgumentException(nameof(itemName));
+
+            if (body == null)
+                throw new ArgumentNullException(nameof(body));
+
+            var sourceExpression = RequireExpression(source);
+            var itemType = ResolveEnumerableItemType(sourceExpression.Type);
+            var enumerableType = typeof(IEnumerable<>).MakeGenericType(itemType);
+            var enumeratorType = typeof(IEnumerator<>).MakeGenericType(itemType);
+            var getEnumerator = enumerableType.GetMethod(nameof(IEnumerable<object>.GetEnumerator))!;
+            var moveNext = typeof(System.Collections.IEnumerator).GetMethod(nameof(System.Collections.IEnumerator.MoveNext))!;
+            var current = enumeratorType.GetProperty(nameof(IEnumerator<object>.Current))!.GetGetMethod()!;
+            var dispose = typeof(IDisposable).GetMethod(nameof(IDisposable.Dispose))!;
+            var enumerator = _il.DeclareLocal(enumeratorType);
+            var item = new BeeLocalExpression(itemName, itemType, _il.DeclareLocal(itemType));
+            var loopLabel = _il.DefineLabel();
+            var conditionLabel = _il.DefineLabel();
+            var finallyEndLabel = _il.DefineLabel();
+
+            sourceExpression.EmitLoad(_il);
+            BeeIlConversions.EmitConvert(sourceExpression.Type, enumerableType, _il);
+            _il.Emit(OpCodes.Callvirt, getEnumerator);
+            _il.Emit(OpCodes.Stloc, enumerator);
+
+            _il.BeginExceptionBlock();
+            _il.Emit(OpCodes.Br, conditionLabel);
+            _il.MarkLabel(loopLabel);
+            _il.Emit(OpCodes.Ldloc, enumerator);
+            _il.Emit(OpCodes.Callvirt, current);
+            _il.Emit(OpCodes.Stloc, item.LocalBuilder);
+            body(item, this);
+            _il.MarkLabel(conditionLabel);
+            _il.Emit(OpCodes.Ldloc, enumerator);
+            _il.Emit(OpCodes.Callvirt, moveNext);
+            _il.Emit(OpCodes.Brtrue, loopLabel);
+            _il.BeginFinallyBlock();
+            _il.Emit(OpCodes.Ldloc, enumerator);
+            _il.Emit(OpCodes.Brfalse, finallyEndLabel);
+            _il.Emit(OpCodes.Ldloc, enumerator);
+            _il.Emit(OpCodes.Callvirt, dispose);
+            _il.MarkLabel(finallyEndLabel);
+            _il.EndExceptionBlock();
+
+            return this;
+        }
+
         public IBeeValueExpression Call(IBeeValueExpression instance, MethodInfo method, params IBeeValueExpression[] arguments)
         {
             if (instance == null)
@@ -390,6 +445,30 @@ namespace DynaBee.FluentApi.Body
         public IBeeValueExpression Add(IBeeValueExpression left, IBeeValueExpression right)
             => new BeeAddExpression(RequireExpression(left), RequireExpression(right));
 
+        public IBeeValueExpression Subtract(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeArithmeticExpression(RequireExpression(left), RequireExpression(right), BeeArithmeticKind.Subtract);
+
+        public IBeeValueExpression Multiply(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeArithmeticExpression(RequireExpression(left), RequireExpression(right), BeeArithmeticKind.Multiply);
+
+        public IBeeValueExpression Divide(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeArithmeticExpression(RequireExpression(left), RequireExpression(right), BeeArithmeticKind.Divide);
+
+        public IBeeValueExpression Modulo(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeArithmeticExpression(RequireExpression(left), RequireExpression(right), BeeArithmeticKind.Modulo);
+
+        public IBeeValueExpression AndAlso(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeBooleanBinaryExpression(RequireExpression(left), RequireExpression(right), andAlso: true);
+
+        public IBeeValueExpression OrElse(IBeeValueExpression left, IBeeValueExpression right)
+            => new BeeBooleanBinaryExpression(RequireExpression(left), RequireExpression(right), andAlso: false);
+
+        public IBeeValueExpression Not(IBeeValueExpression value)
+            => new BeeNotExpression(RequireExpression(value));
+
+        public IBeeValueExpression Coalesce(IBeeValueExpression value, IBeeValueExpression fallback)
+            => new BeeCoalesceExpression(RequireExpression(value), RequireExpression(fallback));
+
         public IBeeValueExpression Concat(params IBeeValueExpression[] values)
         {
             if (values == null || values.Length == 0)
@@ -538,6 +617,25 @@ namespace DynaBee.FluentApi.Body
                 throw new AmbiguousMatchException($"More than one indexer on '{declaringType}' accepts index type '{indexType}'.");
 
             return matches[0];
+        }
+
+        private static Type ResolveEnumerableItemType(Type sourceType)
+        {
+            if (sourceType.IsArray)
+                return sourceType.GetElementType()!;
+
+            if (sourceType.IsGenericType && sourceType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return sourceType.GetGenericArguments()[0];
+
+            var enumerable = sourceType
+                .GetInterfaces()
+                .Concat(new[] { sourceType })
+                .FirstOrDefault(x => x.IsGenericType && x.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+
+            if (enumerable == null)
+                throw new InvalidOperationException($"Type '{sourceType}' does not implement IEnumerable<T>.");
+
+            return enumerable.GetGenericArguments()[0];
         }
 
         private static MethodInfo ResolveMethod(Type declaringType, string methodName, IReadOnlyList<Type> parameterTypes, BindingFlags bindingFlags)
@@ -690,6 +788,8 @@ namespace DynaBee.FluentApi.Body
         }
 
         public string Name { get; }
+
+        internal LocalBuilder LocalBuilder => _local;
 
         public override void EmitLoad(ILGenerator il)
             => il.Emit(OpCodes.Ldloc, _local);
@@ -1276,6 +1376,202 @@ namespace DynaBee.FluentApi.Body
             _right.EmitLoad(il);
             BeeIlConversions.EmitConvert(_right.Type, Type, il);
             il.Emit(OpCodes.Add);
+        }
+    }
+
+    internal enum BeeArithmeticKind
+    {
+        Subtract,
+        Multiply,
+        Divide,
+        Modulo
+    }
+
+    internal sealed class BeeArithmeticExpression : BeeValueExpression
+    {
+        private readonly BeeValueExpression _left;
+        private readonly BeeValueExpression _right;
+        private readonly BeeArithmeticKind _kind;
+
+        public BeeArithmeticExpression(BeeValueExpression left, BeeValueExpression right, BeeArithmeticKind kind)
+            : base(ResolveResultType(left.Type, right.Type))
+        {
+            _left = left;
+            _right = right;
+            _kind = kind;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            _left.EmitLoad(il);
+            BeeIlConversions.EmitConvert(_left.Type, Type, il);
+            _right.EmitLoad(il);
+            BeeIlConversions.EmitConvert(_right.Type, Type, il);
+
+            switch (_kind)
+            {
+                case BeeArithmeticKind.Subtract:
+                    il.Emit(OpCodes.Sub);
+                    break;
+                case BeeArithmeticKind.Multiply:
+                    il.Emit(OpCodes.Mul);
+                    break;
+                case BeeArithmeticKind.Divide:
+                    il.Emit(OpCodes.Div);
+                    break;
+                case BeeArithmeticKind.Modulo:
+                    il.Emit(OpCodes.Rem);
+                    break;
+                default:
+                    throw new NotSupportedException($"Arithmetic operation '{_kind}' is not supported.");
+            }
+        }
+
+        private static Type ResolveResultType(Type leftType, Type rightType)
+        {
+            if (!IsSupportedNumeric(leftType) || !IsSupportedNumeric(rightType))
+                throw new NotSupportedException($"Arithmetic operation between '{leftType}' and '{rightType}' is not supported.");
+
+            if (leftType == typeof(double) || rightType == typeof(double))
+                return typeof(double);
+
+            if (leftType == typeof(float) || rightType == typeof(float))
+                return typeof(float);
+
+            if (leftType == typeof(long) || rightType == typeof(long))
+                return typeof(long);
+
+            return typeof(int);
+        }
+
+        private static bool IsSupportedNumeric(Type type)
+            => type == typeof(byte)
+               || type == typeof(short)
+               || type == typeof(int)
+               || type == typeof(long)
+               || type == typeof(float)
+               || type == typeof(double);
+    }
+
+    internal sealed class BeeBooleanBinaryExpression : BeeValueExpression
+    {
+        private readonly BeeValueExpression _left;
+        private readonly BeeValueExpression _right;
+        private readonly bool _andAlso;
+
+        public BeeBooleanBinaryExpression(BeeValueExpression left, BeeValueExpression right, bool andAlso) : base(typeof(bool))
+        {
+            if (left.Type != typeof(bool) || right.Type != typeof(bool))
+                throw new InvalidOperationException($"Boolean expressions require bool operands, not '{left.Type}' and '{right.Type}'.");
+
+            _left = left;
+            _right = right;
+            _andAlso = andAlso;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            var shortCircuitLabel = il.DefineLabel();
+            var endLabel = il.DefineLabel();
+
+            _left.EmitLoad(il);
+            il.Emit(_andAlso ? OpCodes.Brfalse : OpCodes.Brtrue, shortCircuitLabel);
+            _right.EmitLoad(il);
+            il.Emit(OpCodes.Br, endLabel);
+            il.MarkLabel(shortCircuitLabel);
+            il.Emit(_andAlso ? OpCodes.Ldc_I4_0 : OpCodes.Ldc_I4_1);
+            il.MarkLabel(endLabel);
+        }
+    }
+
+    internal sealed class BeeNotExpression : BeeValueExpression
+    {
+        private readonly BeeValueExpression _value;
+
+        public BeeNotExpression(BeeValueExpression value) : base(typeof(bool))
+        {
+            if (value.Type != typeof(bool))
+                throw new InvalidOperationException($"Boolean negation requires a bool operand, not '{value.Type}'.");
+
+            _value = value;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            _value.EmitLoad(il);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Ceq);
+        }
+    }
+
+    internal sealed class BeeCoalesceExpression : BeeValueExpression
+    {
+        private readonly BeeValueExpression _value;
+        private readonly BeeValueExpression _fallback;
+
+        public BeeCoalesceExpression(BeeValueExpression value, BeeValueExpression fallback)
+            : base(ResolveResultType(value.Type, fallback.Type))
+        {
+            _value = value;
+            _fallback = fallback;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            var fallbackLabel = il.DefineLabel();
+            var endLabel = il.DefineLabel();
+            var local = il.DeclareLocal(_value.Type);
+            var nullableUnderlyingType = Nullable.GetUnderlyingType(_value.Type);
+
+            _value.EmitLoad(il);
+            il.Emit(OpCodes.Stloc, local);
+
+            if (nullableUnderlyingType != null)
+            {
+                var hasValue = _value.Type.GetProperty(nameof(Nullable<int>.HasValue))!.GetGetMethod()!;
+                var getValueOrDefault = _value.Type.GetMethod(nameof(Nullable<int>.GetValueOrDefault), Type.EmptyTypes)!;
+
+                il.Emit(OpCodes.Ldloca_S, local);
+                il.Emit(OpCodes.Call, hasValue);
+                il.Emit(OpCodes.Brfalse, fallbackLabel);
+                il.Emit(OpCodes.Ldloca_S, local);
+                il.Emit(OpCodes.Call, getValueOrDefault);
+                BeeIlConversions.EmitConvert(nullableUnderlyingType, Type, il);
+            }
+            else
+            {
+                il.Emit(OpCodes.Ldloc, local);
+                il.Emit(OpCodes.Brfalse, fallbackLabel);
+                il.Emit(OpCodes.Ldloc, local);
+                BeeIlConversions.EmitConvert(_value.Type, Type, il);
+            }
+
+            il.Emit(OpCodes.Br, endLabel);
+            il.MarkLabel(fallbackLabel);
+            BeeMethodBodyBuilder.EmitLoadWithConversion(il, _fallback, Type);
+            il.MarkLabel(endLabel);
+        }
+
+        private static Type ResolveResultType(Type valueType, Type fallbackType)
+        {
+            var nullableUnderlyingType = Nullable.GetUnderlyingType(valueType);
+
+            if (valueType.IsValueType && nullableUnderlyingType == null)
+                throw new InvalidOperationException($"Coalesce requires a reference or nullable value, not '{valueType}'.");
+
+            if (nullableUnderlyingType != null && BeeIlConversions.CanConvert(fallbackType, nullableUnderlyingType))
+                return nullableUnderlyingType;
+
+            if (valueType == fallbackType || valueType.IsAssignableFrom(fallbackType))
+                return valueType;
+
+            if (fallbackType.IsAssignableFrom(valueType))
+                return fallbackType;
+
+            if (BeeIlConversions.CanConvert(fallbackType, valueType))
+                return valueType;
+
+            throw new InvalidOperationException($"Coalesce fallback type '{fallbackType}' cannot be assigned or converted to '{valueType}'.");
         }
     }
 

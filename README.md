@@ -369,6 +369,57 @@ builder.AddClass("ItemMapperAdapter", c => c
         })));
 ```
 
+For non-indexed sources such as `IEnumerable<T>`, use `ForEach(...)`. DynaBee
+emits the enumerator pattern and disposes the enumerator when enumeration ends.
+
+```csharp
+var addMethod = typeof(List<string>)
+    .GetMethod(nameof(List<string>.Add))!;
+
+builder.AddClass("EnumerableCopier", c => c
+    .AddMethod("Copy", typeof(List<string>), m => m
+        .WithParameter<IEnumerable<string>>("source")
+        .EmitsBody(body =>
+        {
+            var source = body.Parameter<IEnumerable<string>>("source");
+            var destination = body.DeclareLocal<List<string>>("destination");
+
+            body.Assign(destination, body.New<List<string>>());
+            body.ForEach(source, "item", (item, loop) =>
+            {
+                loop.Evaluate(loop.Call(destination, addMethod, item));
+            });
+            body.Return(destination);
+        })));
+```
+
+Method bodies can also express richer `MapFrom(...)`-style values without
+falling back to raw IL:
+
+```csharp
+builder.AddClass("ExpressionMapper", c => c
+    .AddMethod("Compute", typeof(int), m => m
+        .WithParameter<int>("x")
+        .WithParameter<int>("y")
+        .EmitsBody(body =>
+        {
+            var x = body.Parameter<int>("x");
+            var y = body.Parameter<int>("y");
+
+            body.Return(body.Add(
+                body.Multiply(body.Subtract(x, y), body.Constant(2)),
+                body.Modulo(x, y)));
+        }))
+    .AddMethod("NameOrDefault", typeof(string), m => m
+        .WithParameter<string>("name")
+        .EmitsBody(body =>
+        {
+            body.Return(body.Coalesce(
+                body.Parameter<string>("name"),
+                body.Constant("Unknown")));
+        })));
+```
+
 ### 7) Cached method invokers
 
 DynaBee can create cached invokers for generated methods. The invoker resolves

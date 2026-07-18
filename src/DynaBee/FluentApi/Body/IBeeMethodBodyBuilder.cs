@@ -135,6 +135,18 @@ namespace DynaBee.FluentApi.Body
             Action<IBeeMethodBodyBuilder> body);
 
         /// <summary>
+        /// Emits a foreach loop statement over an enumerable value.
+        /// </summary>
+        /// <param name="source">Enumerable source expression.</param>
+        /// <param name="itemName">Generated loop item local name.</param>
+        /// <param name="body">Loop body block that receives the current item expression.</param>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder ForEach(
+            IBeeValueExpression source,
+            string itemName,
+            Action<IBeeLocal, IBeeMethodBodyBuilder> body);
+
+        /// <summary>
         /// Creates an instance method call expression.
         /// </summary>
         /// <param name="instance">Instance expression used as the call target.</param>
@@ -301,6 +313,69 @@ namespace DynaBee.FluentApi.Body
         /// <param name="right">Right value.</param>
         /// <returns>An addition expression.</returns>
         IBeeValueExpression Add(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a subtraction expression.
+        /// </summary>
+        /// <param name="left">Left value.</param>
+        /// <param name="right">Right value.</param>
+        /// <returns>A subtraction expression.</returns>
+        IBeeValueExpression Subtract(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a multiplication expression.
+        /// </summary>
+        /// <param name="left">Left value.</param>
+        /// <param name="right">Right value.</param>
+        /// <returns>A multiplication expression.</returns>
+        IBeeValueExpression Multiply(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a division expression.
+        /// </summary>
+        /// <param name="left">Left value.</param>
+        /// <param name="right">Right value.</param>
+        /// <returns>A division expression.</returns>
+        IBeeValueExpression Divide(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a modulo expression.
+        /// </summary>
+        /// <param name="left">Left value.</param>
+        /// <param name="right">Right value.</param>
+        /// <returns>A modulo expression.</returns>
+        IBeeValueExpression Modulo(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a short-circuiting boolean AND expression.
+        /// </summary>
+        /// <param name="left">Left boolean value.</param>
+        /// <param name="right">Right boolean value.</param>
+        /// <returns>A boolean expression.</returns>
+        IBeeValueExpression AndAlso(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a short-circuiting boolean OR expression.
+        /// </summary>
+        /// <param name="left">Left boolean value.</param>
+        /// <param name="right">Right boolean value.</param>
+        /// <returns>A boolean expression.</returns>
+        IBeeValueExpression OrElse(IBeeValueExpression left, IBeeValueExpression right);
+
+        /// <summary>
+        /// Creates a boolean negation expression.
+        /// </summary>
+        /// <param name="value">Boolean value to negate.</param>
+        /// <returns>A boolean expression.</returns>
+        IBeeValueExpression Not(IBeeValueExpression value);
+
+        /// <summary>
+        /// Creates a null-coalescing expression.
+        /// </summary>
+        /// <param name="value">Nullable or reference value.</param>
+        /// <param name="fallback">Fallback value used when <paramref name="value"/> is null.</param>
+        /// <returns>A value expression.</returns>
+        IBeeValueExpression Coalesce(IBeeValueExpression value, IBeeValueExpression fallback);
 
         /// <summary>
         /// Creates a string concatenation expression.

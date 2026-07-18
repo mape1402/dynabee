@@ -1241,6 +1241,102 @@ namespace DynaBee.Tests.FluentApi
         }
 
         [Fact]
+        public void EmitsBody_Can_Enumerate_IEnumerable_With_ForEach_And_Dispose_Enumerator()
+        {
+            var addMethod = typeof(List<string>).GetMethod(nameof(List<string>.Add))!;
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.ForEach")
+                .AddClass("EnumerableCopier", c => c
+                    .AddMethod("Copy", typeof(List<string>), m => m
+                        .WithParameter<IEnumerable<string>>("source")
+                        .EmitsBody(body =>
+                        {
+                            var source = body.Parameter<IEnumerable<string>>("source");
+                            var destination = body.DeclareLocal<List<string>>("destination");
+
+                            body.Assign(destination, body.New<List<string>>());
+                            body.ForEach(source, "item", (item, loop) =>
+                            {
+                                loop.Evaluate(loop.Call(destination, addMethod, item));
+                            });
+                            body.Return(destination);
+                        })))
+                .Build();
+
+            var source = new TrackingEnumerable(new[] { "one", "two" });
+            var copier = Activator.CreateInstance(context.GetClrType("EnumerableCopier"))!;
+            var result = (List<string>)copier.GetType().GetMethod("Copy")!.Invoke(copier, new object[] { source })!;
+
+            Assert.Equal(new[] { "one", "two" }, result);
+            Assert.True(source.LastEnumerator!.Disposed);
+        }
+
+        [Fact]
+        public void EmitsBody_Can_Generate_Richer_Value_Expressions()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Body.RichExpressions")
+                .AddClass("ExpressionMapper", c => c
+                    .AddMethod("Compute", typeof(int), m => m
+                        .WithParameter<int>("x")
+                        .WithParameter<int>("y")
+                        .EmitsBody(body =>
+                        {
+                            var x = body.Parameter<int>("x");
+                            var y = body.Parameter<int>("y");
+
+                            body.Return(body.Add(
+                                body.Add(
+                                    body.Multiply(body.Subtract(x, y), body.Constant(2)),
+                                    body.Divide(x, y)),
+                                body.Modulo(x, y)));
+                        }))
+                    .AddMethod("ShouldMap", typeof(bool), m => m
+                        .WithParameter<int>("x")
+                        .WithParameter<string>("name")
+                        .EmitsBody(body =>
+                        {
+                            var x = body.Parameter<int>("x");
+                            var name = body.Parameter<string>("name");
+
+                            body.Return(body.OrElse(
+                                body.AndAlso(
+                                    body.GreaterThan(x, body.Constant(0)),
+                                    body.Not(body.IsNull(name))),
+                                body.Equal(x, body.Constant(42))));
+                        }))
+                    .AddMethod("NameOrDefault", typeof(string), m => m
+                        .WithParameter<string>("name")
+                        .EmitsBody(body =>
+                        {
+                            body.Return(body.Coalesce(
+                                body.Parameter<string>("name"),
+                                body.Constant("Unknown")));
+                        }))
+                    .AddMethod("ValueOrDefault", typeof(int), m => m
+                        .WithParameter<int?>("value")
+                        .EmitsBody(body =>
+                        {
+                            body.Return(body.Coalesce(
+                                body.Parameter<int?>("value"),
+                                body.Constant(7)));
+                        })))
+                .Build();
+
+            var mapper = Activator.CreateInstance(context.GetClrType("ExpressionMapper"))!;
+            var type = mapper.GetType();
+
+            Assert.Equal(13, type.GetMethod("Compute")!.Invoke(mapper, new object[] { 9, 4 }));
+            Assert.Equal(true, type.GetMethod("ShouldMap")!.Invoke(mapper, new object[] { 1, "Ada" }));
+            Assert.Equal(true, type.GetMethod("ShouldMap")!.Invoke(mapper, new object[] { 42, null }));
+            Assert.Equal(false, type.GetMethod("ShouldMap")!.Invoke(mapper, new object[] { 1, null }));
+            Assert.Equal("Unknown", type.GetMethod("NameOrDefault")!.Invoke(mapper, new object[] { null }));
+            Assert.Equal("Grace", type.GetMethod("NameOrDefault")!.Invoke(mapper, new object[] { "Grace" }));
+            Assert.Equal(7, type.GetMethod("ValueOrDefault")!.Invoke(mapper, new object[] { null }));
+            Assert.Equal(11, type.GetMethod("ValueOrDefault")!.Invoke(mapper, new object[] { 11 }));
+        }
+
+        [Fact]
         public void CreateBoundMethodInvoker_Can_Invoke_Single_Source_Runtime_Mapper()
         {
             var context = DynaBeeBuilder
@@ -1521,6 +1617,56 @@ namespace DynaBee.Tests.FluentApi
             public int Id { get; set; }
 
             public List<OrderItemDto> Items { get; set; }
+        }
+
+        public sealed class TrackingEnumerable : IEnumerable<string>
+        {
+            private readonly IReadOnlyList<string> _items;
+
+            public TrackingEnumerable(IReadOnlyList<string> items)
+            {
+                _items = items;
+            }
+
+            public TrackingEnumerator LastEnumerator { get; private set; }
+
+            public IEnumerator<string> GetEnumerator()
+            {
+                LastEnumerator = new TrackingEnumerator(_items);
+                return LastEnumerator;
+            }
+
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+                => GetEnumerator();
+        }
+
+        public sealed class TrackingEnumerator : IEnumerator<string>
+        {
+            private readonly IReadOnlyList<string> _items;
+            private int _index = -1;
+
+            public TrackingEnumerator(IReadOnlyList<string> items)
+            {
+                _items = items;
+            }
+
+            public string Current => _items[_index];
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool Disposed { get; private set; }
+
+            public bool MoveNext()
+            {
+                _index++;
+                return _index < _items.Count;
+            }
+
+            public void Reset()
+                => _index = -1;
+
+            public void Dispose()
+                => Disposed = true;
         }
 
         public sealed class AdvancedSource

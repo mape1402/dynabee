@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.2.4] - 2026-07-17
+
+### Added
+- Added `IBeeMethodBodyBuilder.ForEach(...)` for enumerating arrays, lists, and `IEnumerable<T>`-compatible sources without materializing a temporary list.
+- Added normal enumerator disposal semantics for generated `ForEach(...)` loops.
+- Added richer value expression primitives for generated method bodies: `Subtract(...)`, `Multiply(...)`, `Divide(...)`, `Modulo(...)`, `AndAlso(...)`, `OrElse(...)`, `Not(...)`, and `Coalesce(...)`.
+- Added tests for direct `IEnumerable<T>` enumeration, enumerator disposal, arithmetic expressions, boolean short-circuit expressions, reference coalescing, and nullable coalescing.
+
 ## [v1.2.3] - 2026-07-17
 
 ### Added
