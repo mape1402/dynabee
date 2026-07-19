@@ -46,11 +46,15 @@
             ElementBuilderAction buildAction,
             IReadOnlyDictionary<string, object> metadata = null)
         {
-            if (_elementContextBuilders.ContainsKey(name))
+            var key = name;
+            if (_elementContextBuilders.ContainsKey(key) && elementType != ElementType.Method)
                 throw new InvalidOperationException($"Element with name '{name}' already exists in dynamic type '{TypeBuilder.Name}'.");
 
+            if (_elementContextBuilders.ContainsKey(key))
+                key = $"{name}#{_elementContextBuilders.Count(x => string.Equals(x.Value.Name, name, StringComparison.Ordinal)) + 1}";
+
             var elementContextBuilder = new ElementContextBuilder(name, elementType, buildAction, this, metadata);
-            _elementContextBuilders.Add(name, elementContextBuilder);
+            _elementContextBuilders.Add(key, elementContextBuilder);
 
             return elementContextBuilder;
         }

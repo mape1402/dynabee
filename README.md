@@ -434,7 +434,75 @@ builder.AddClass("ExpressionMapper", c => c
         })));
 ```
 
-### 7) Cached method invokers
+### 7) Generated dispatch delegates
+
+When callers know the delegate shape they want, DynaBee can create typed
+delegates for generated methods and constructors. Method lookup happens once,
+then repeated calls use the compiled delegate path instead of reflection
+invocation.
+
+```csharp
+using DynaBee.FluentApi.Invocation;
+
+var context = catalog.GetContext("Demo.Runtime");
+var adder = context.CreateInstance("GeneratedAdder");
+
+var add = context.CreateBoundDelegate<Func<int, int, int>>(
+    "GeneratedAdder",
+    adder,
+    "Add",
+    new[] { typeof(int), typeof(int) });
+
+var result = add(1, 2); // 3
+```
+
+Open delegates keep the generated instance as the first delegate parameter:
+
+```csharp
+var openAdd = context.CreateOpenDelegate<Func<object, int, int, int>>(
+    "GeneratedAdder",
+    "Add",
+    new[] { typeof(int), typeof(int) });
+
+var result = openAdd(adder, 1, 2);
+```
+
+Constructor factories avoid consumer-side reflection when creating generated
+instances with constructor arguments:
+
+```csharp
+var createGreeter = context.CreateFactoryDelegate<Func<string, object>>(
+    "GeneratedGreeter",
+    new[] { typeof(string) });
+
+var greeter = createGreeter("Ada");
+```
+
+For diagnostics, tracing, and cache keys, generated methods can be described
+with stable metadata:
+
+```csharp
+var descriptor = context.GetGeneratedMethodDescriptor(
+    "GeneratedAdder",
+    "Add",
+    new[] { typeof(int), typeof(int) });
+
+Console.WriteLine($"{descriptor.DeclaringType.Name}.{descriptor.Name}");
+```
+
+Object adapters are available for single-argument dynamic fallback paths:
+
+```csharp
+var adapter = context.CreateObjectAdapter(
+    "GeneratedDoubler",
+    doubler,
+    "Double",
+    new[] { typeof(int) });
+
+var doubled = adapter(6); // boxed 12
+```
+
+### 8) Cached method invokers
 
 DynaBee can create cached invokers for generated methods. The invoker resolves
 reflection metadata once, compiles a dispatch bridge, and avoids `MethodInfo.Invoke(...)`
