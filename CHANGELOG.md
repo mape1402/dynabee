@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.2.5] - 2026-07-19
+
+### Added
+- Added generated method descriptors through `DynaBeeGeneratedMethodDescriptor`.
+- Added generated method descriptor lookup helpers for single overloads and generated types.
+- Added typed bound delegate creation through `CreateBoundDelegate<TDelegate>(...)`.
+- Added typed open-instance delegate creation through `CreateOpenDelegate<TDelegate>(...)`.
+- Added typed constructor factory delegate creation through `CreateFactoryDelegate<TDelegate>(...)`.
+- Added object-based single-argument adapters through `CreateObjectAdapter(...)`.
+- Added overload-safe generated method registration support.
+- Added tests for bound delegates, open delegates, overloaded method delegates, typed factories, high-arity delegates, object adapters, and generated method descriptors.
+
+### Changed
+- Generated type contexts now support multiple method elements with the same generated name while preserving clear single-element lookup errors for ambiguous names.
+
 ## [v1.2.4] - 2026-07-17
 
 ### Added

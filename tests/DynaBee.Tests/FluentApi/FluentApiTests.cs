@@ -7,6 +7,7 @@ namespace DynaBee.Tests.FluentApi
     using System.Reflection.Emit;
     using global::DynaBee;
     using global::DynaBee.FluentApi;
+    using global::DynaBee.FluentApi.Body;
     using global::DynaBee.FluentApi.DependencyInjection;
     using global::DynaBee.FluentApi.Diagnostics;
     using global::DynaBee.FluentApi.Invocation;
@@ -1482,6 +1483,204 @@ namespace DynaBee.Tests.FluentApi
             Assert.Contains(typeof(User).FullName!, typeMismatch.Message);
         }
 
+        [Fact]
+        public void CreateBoundDelegate_Can_Invoke_Generated_Method()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.Bound")
+                .AddClass("GeneratedAdder", c => c
+                    .AddMethod("Add", typeof(int), m => m
+                        .WithParameter<int>("left")
+                        .WithParameter<int>("right")
+                        .EmitsBody(body =>
+                        {
+                            body.Return(body.Add(
+                                body.Parameter<int>("left"),
+                                body.Parameter<int>("right")));
+                        })))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedAdder");
+            var add = context.CreateBoundDelegate<Func<int, int, int>>(
+                "GeneratedAdder",
+                instance,
+                "Add",
+                new[] { typeof(int), typeof(int) });
+
+            Assert.Equal(3, add(1, 2));
+        }
+
+        [Fact]
+        public void CreateBoundDelegate_Resolves_Overloaded_Methods_By_Parameter_Types()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.Overloads")
+                .AddClass("GeneratedFormatter", c => c
+                    .AddMethod("Format", typeof(string), m => m
+                        .WithParameter<int>("value")
+                        .EmitsBody(body => body.Return(body.Convert<string>(body.Parameter<int>("value")))))
+                    .AddMethod("Format", typeof(string), m => m
+                        .WithParameter<decimal>("value")
+                        .EmitsBody(body => body.Return(body.Convert<string>(body.Parameter<decimal>("value"))))))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedFormatter");
+            var formatInt = context.CreateBoundDelegate<Func<int, string>>(
+                "GeneratedFormatter",
+                instance,
+                "Format",
+                new[] { typeof(int) });
+            var formatDecimal = context.CreateBoundDelegate<Func<decimal, string>>(
+                "GeneratedFormatter",
+                instance,
+                "Format",
+                new[] { typeof(decimal) });
+
+            Assert.Equal("10", formatInt(10));
+            Assert.Equal("10.5", formatDecimal(10.5m));
+        }
+
+        [Fact]
+        public void CreateOpenDelegate_Can_Invoke_Generated_Method_With_Object_Target()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.Open")
+                .AddClass("GeneratedAdder", c => c
+                    .AddMethod("Add", typeof(int), m => m
+                        .WithParameter<int>("left")
+                        .WithParameter<int>("right")
+                        .EmitsBody(body =>
+                        {
+                            body.Return(body.Add(
+                                body.Parameter<int>("left"),
+                                body.Parameter<int>("right")));
+                        })))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedAdder");
+            var add = context.CreateOpenDelegate<Func<object, int, int, int>>(
+                "GeneratedAdder",
+                "Add",
+                new[] { typeof(int), typeof(int) });
+
+            Assert.Equal(7, add(instance, 3, 4));
+        }
+
+        [Fact]
+        public void CreateFactoryDelegate_Can_Create_Generated_Instance()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.Factory")
+                .AddClass("GeneratedGreeter", c => c
+                    .Inject<string>("Name"))
+                .Build();
+
+            var factory = context.CreateFactoryDelegate<Func<string, object>>(
+                "GeneratedGreeter",
+                new[] { typeof(string) });
+            var instance = factory("Ada");
+
+            Assert.Equal("Ada", instance.GetType().GetProperty("Name")!.GetValue(instance));
+        }
+
+        [Fact]
+        public void CreateBoundDelegate_Supports_High_Arity_Methods()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.HighArity")
+                .AddClass("GeneratedAggregator", c => c
+                    .AddMethod("Sum", typeof(int), m => m
+                        .WithParameter<int>("p0")
+                        .WithParameter<int>("p1")
+                        .WithParameter<int>("p2")
+                        .WithParameter<int>("p3")
+                        .WithParameter<int>("p4")
+                        .WithParameter<int>("p5")
+                        .WithParameter<int>("p6")
+                        .WithParameter<int>("p7")
+                        .WithParameter<int>("p8")
+                        .WithParameter<int>("p9")
+                        .WithParameter<HighArityContext>("context")
+                        .EmitsBody(body =>
+                        {
+                            IBeeValueExpression sum = body.Parameter<int>("p0");
+                            for (var i = 1; i < 10; i++)
+                                sum = body.Add(sum, body.Parameter<int>($"p{i}"));
+
+                            body.Return(body.Add(sum, body.Property(body.Parameter<HighArityContext>("context"), nameof(HighArityContext.Offset))));
+                        })))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedAggregator");
+            var sum = context.CreateBoundDelegate<HighAritySumDelegate>(
+                "GeneratedAggregator",
+                instance,
+                "Sum",
+                new[]
+                {
+                    typeof(int), typeof(int), typeof(int), typeof(int), typeof(int),
+                    typeof(int), typeof(int), typeof(int), typeof(int), typeof(int),
+                    typeof(HighArityContext)
+                });
+
+            Assert.Equal(65, sum(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, new HighArityContext { Offset = 10 }));
+        }
+
+        [Fact]
+        public void CreateObjectAdapter_Can_Invoke_Single_Argument_Method()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.ObjectAdapter")
+                .AddClass("GeneratedDoubler", c => c
+                    .AddMethod("Double", typeof(int), m => m
+                        .WithParameter<int>("value")
+                        .EmitsBody(body =>
+                        {
+                            body.Return(body.Add(
+                                body.Parameter<int>("value"),
+                                body.Parameter<int>("value")));
+                        })))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedDoubler");
+            var adapter = context.CreateObjectAdapter(
+                "GeneratedDoubler",
+                instance,
+                "Double",
+                new[] { typeof(int) });
+
+            Assert.Equal(12, adapter(6));
+        }
+
+        [Fact]
+        public void GetGeneratedMethodDescriptor_Returns_Stable_Method_Metadata()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.Descriptor")
+                .AddClass("GeneratedAdder", c => c
+                    .AddMethod("Add", typeof(int), m => m
+                        .WithParameter<int>("left")
+                        .WithParameter<int>("right")
+                        .EmitsBody(body =>
+                        {
+                            body.Return(body.Add(
+                                body.Parameter<int>("left"),
+                                body.Parameter<int>("right")));
+                        })))
+                .Build();
+
+            var descriptor = context.GetGeneratedMethodDescriptor(
+                "GeneratedAdder",
+                "Add",
+                new[] { typeof(int), typeof(int) });
+
+            Assert.Equal("Add", descriptor.Name);
+            Assert.Equal(typeof(int), descriptor.ReturnType);
+            Assert.Equal(new[] { typeof(int), typeof(int) }, descriptor.ParameterTypes);
+            Assert.Equal(context.GetClrType("GeneratedAdder"), descriptor.DeclaringType);
+            Assert.Contains(context.GetGeneratedMethodDescriptors("GeneratedAdder"), x => x.Name == "Add");
+        }
+
         public interface ICalculator
         {
             string Name { get; set; }
@@ -1562,6 +1761,24 @@ namespace DynaBee.Tests.FluentApi
         public sealed class TestMapContext
         {
             public string Prefix { get; set; } = string.Empty;
+        }
+
+        public delegate int HighAritySumDelegate(
+            int p0,
+            int p1,
+            int p2,
+            int p3,
+            int p4,
+            int p5,
+            int p6,
+            int p7,
+            int p8,
+            int p9,
+            HighArityContext context);
+
+        public sealed class HighArityContext
+        {
+            public int Offset { get; set; }
         }
 
         public interface IValueResolver<in TSource, in TDestination, out TMember>
