@@ -1584,6 +1584,49 @@ namespace DynaBee.Tests.FluentApi
         }
 
         [Fact]
+        public void CreateBoundDelegate_Can_Use_Runtime_Delegate_Type()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.RuntimeBound")
+                .AddClass("GeneratedAdder", c => c
+                    .AddMethod("Add", typeof(int), m => m
+                        .WithParameter<int>("left")
+                        .WithParameter<int>("right")
+                        .EmitsBody(body => body.Return(body.Add(
+                            body.Parameter<int>("left"),
+                            body.Parameter<int>("right"))))))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedAdder");
+            var add = (Func<int, int, int>)context.CreateBoundDelegate(
+                typeof(Func<int, int, int>),
+                "GeneratedAdder",
+                instance,
+                "Add",
+                new[] { typeof(int), typeof(int) });
+
+            Assert.Equal(11, add(5, 6));
+        }
+
+        [Fact]
+        public void CreateFactoryDelegate_Can_Use_Runtime_Delegate_Type()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.RuntimeFactory")
+                .AddClass("GeneratedGreeter", c => c
+                    .Inject<string>("Name"))
+                .Build();
+
+            var factory = (Func<string, object>)context.CreateFactoryDelegate(
+                typeof(Func<string, object>),
+                "GeneratedGreeter",
+                new[] { typeof(string) });
+            var instance = factory("Grace");
+
+            Assert.Equal("Grace", instance.GetType().GetProperty("Name")!.GetValue(instance));
+        }
+
+        [Fact]
         public void CreateBoundDelegate_Supports_High_Arity_Methods()
         {
             var context = DynaBeeBuilder
@@ -1650,6 +1693,179 @@ namespace DynaBee.Tests.FluentApi
                 new[] { typeof(int) });
 
             Assert.Equal(12, adapter(6));
+        }
+
+        [Fact]
+        public void CreateObjectAdapter2_Can_Invoke_Two_Argument_Method()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.ObjectAdapter2")
+                .AddClass("GeneratedAdder", c => c
+                    .AddMethod("Add", typeof(int), m => m
+                        .WithParameter<int>("left")
+                        .WithParameter<int>("right")
+                        .EmitsBody(body => body.Return(body.Add(
+                            body.Parameter<int>("left"),
+                            body.Parameter<int>("right"))))))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedAdder");
+            var adapter = context.CreateObjectAdapter2(
+                "GeneratedAdder",
+                instance,
+                "Add",
+                new[] { typeof(int), typeof(int) });
+
+            Assert.Equal(3, adapter(1, 2));
+        }
+
+        [Fact]
+        public void CreateObjectAdapter2_Fails_With_Clear_Argument_Errors()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.ObjectAdapter2Errors")
+                .AddClass("GeneratedAdder", c => c
+                    .AddMethod("Add", typeof(int), m => m
+                        .WithParameter<int>("left")
+                        .WithParameter<int>("right")
+                        .EmitsBody(body => body.Return(body.Add(
+                            body.Parameter<int>("left"),
+                            body.Parameter<int>("right"))))))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedAdder");
+            var adapter = context.CreateObjectAdapter2(
+                "GeneratedAdder",
+                instance,
+                "Add",
+                new[] { typeof(int), typeof(int) });
+
+            var exception = Assert.Throws<InvalidOperationException>(() => adapter(1, "two"));
+
+            Assert.Contains("Argument 1 cannot be assigned", exception.Message);
+            Assert.Contains("GeneratedAdder", exception.Message);
+        }
+
+        [Fact]
+        public void CreateObjectAdapter2_Can_Invoke_Context_Aware_Method()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.ObjectAdapterContext")
+                .AddClass("GeneratedRule", c => c
+                    .AddMethod("IsValid", typeof(bool), m => m
+                        .WithParameter<Order>("order")
+                        .WithParameter<ValidationContext>("context")
+                        .EmitsBody(body => body.Return(body.GreaterThan(
+                            body.Property(body.Parameter<Order>("order"), nameof(Order.Id)),
+                            body.Property(body.Parameter<ValidationContext>("context"), nameof(ValidationContext.MinimumId)))))))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedRule");
+            var adapter = context.CreateObjectAdapter2(
+                "GeneratedRule",
+                instance,
+                "IsValid",
+                new[] { typeof(Order), typeof(ValidationContext) });
+
+            Assert.True((bool)adapter(new Order { Id = 10 }, new ValidationContext { MinimumId = 5 }));
+            Assert.False((bool)adapter(new Order { Id = 4 }, new ValidationContext { MinimumId = 5 }));
+        }
+
+        [Fact]
+        public void CreateObjectAdapter3_Can_Invoke_Three_Argument_Method()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.ObjectAdapter3")
+                .AddClass("GeneratedAggregator", c => c
+                    .AddMethod("Sum", typeof(int), m => m
+                        .WithParameter<int>("a")
+                        .WithParameter<int>("b")
+                        .WithParameter<int>("c")
+                        .EmitsBody(body => body.Return(body.Add(
+                            body.Add(body.Parameter<int>("a"), body.Parameter<int>("b")),
+                            body.Parameter<int>("c"))))))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedAggregator");
+            var adapter = context.CreateObjectAdapter3(
+                "GeneratedAggregator",
+                instance,
+                "Sum",
+                new[] { typeof(int), typeof(int), typeof(int) });
+
+            Assert.Equal(6, adapter(1, 2, 3));
+        }
+
+        [Fact]
+        public void CreateArgumentListAdapter_Supports_High_Arity_Methods()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.ObjectAdapterHighArity")
+                .AddClass("GeneratedAggregator", c => c
+                    .AddMethod("Sum", typeof(int), m => m
+                        .WithParameter<int>("p0")
+                        .WithParameter<int>("p1")
+                        .WithParameter<int>("p2")
+                        .WithParameter<int>("p3")
+                        .WithParameter<int>("p4")
+                        .WithParameter<int>("p5")
+                        .WithParameter<int>("p6")
+                        .WithParameter<int>("p7")
+                        .WithParameter<int>("p8")
+                        .WithParameter<int>("p9")
+                        .WithParameter<HighArityContext>("context")
+                        .EmitsBody(body =>
+                        {
+                            IBeeValueExpression sum = body.Parameter<int>("p0");
+                            for (var i = 1; i < 10; i++)
+                                sum = body.Add(sum, body.Parameter<int>($"p{i}"));
+
+                            body.Return(body.Add(sum, body.Property(body.Parameter<HighArityContext>("context"), nameof(HighArityContext.Offset))));
+                        })))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedAggregator");
+            var adapter = context.CreateArgumentListAdapter(
+                "GeneratedAggregator",
+                instance,
+                "Sum",
+                new[]
+                {
+                    typeof(int), typeof(int), typeof(int), typeof(int), typeof(int),
+                    typeof(int), typeof(int), typeof(int), typeof(int), typeof(int),
+                    typeof(HighArityContext)
+                });
+
+            Assert.Equal(typeof(int), adapter.ReturnType);
+            Assert.Equal(65, adapter.Invoke(new object[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, new HighArityContext { Offset = 10 } }));
+        }
+
+        [Fact]
+        public void CreateArgumentListAdapter_Fails_With_Clear_Argument_Errors()
+        {
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.Delegates.ObjectAdapterErrors")
+                .AddClass("GeneratedAdder", c => c
+                    .AddMethod("Add", typeof(int), m => m
+                        .WithParameter<int>("left")
+                        .WithParameter<int>("right")
+                        .EmitsBody(body => body.Return(body.Add(
+                            body.Parameter<int>("left"),
+                            body.Parameter<int>("right"))))))
+                .Build();
+
+            var instance = context.CreateInstance("GeneratedAdder");
+            var adapter = context.CreateArgumentListAdapter(
+                "GeneratedAdder",
+                instance,
+                "Add",
+                new[] { typeof(int), typeof(int) });
+
+            var countMismatch = Assert.Throws<InvalidOperationException>(() => adapter.Invoke(new object[] { 1 }));
+            var typeMismatch = Assert.Throws<InvalidOperationException>(() => adapter.Invoke(new object[] { 1, "two" }));
+
+            Assert.Contains("Argument count mismatch", countMismatch.Message);
+            Assert.Contains("Argument 1 cannot be assigned", typeMismatch.Message);
         }
 
         [Fact]
@@ -1779,6 +1995,11 @@ namespace DynaBee.Tests.FluentApi
         public sealed class HighArityContext
         {
             public int Offset { get; set; }
+        }
+
+        public sealed class ValidationContext
+        {
+            public int MinimumId { get; set; }
         }
 
         public interface IValueResolver<in TSource, in TDestination, out TMember>

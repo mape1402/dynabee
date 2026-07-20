@@ -3,6 +3,7 @@ namespace DynaBee.Benchmarks;
 using BenchmarkDotNet.Attributes;
 using DynaBee;
 using DynaBee.FluentApi;
+using DynaBee.FluentApi.Invocation;
 using System.Reflection;
 
 [MemoryDiagnoser]
@@ -12,6 +13,9 @@ public class InvocationBenchmarks
     private IAdder _typedInstance;
     private MethodInfo _addMethod;
     private object[] _addArguments;
+    private IDynaBeeMethodInvoker _methodInvoker;
+    private Func<object, object, object> _objectAdapter2;
+    private IDynaBeeObjectMethodAdapter _argumentListAdapter;
 
     [GlobalSetup]
     public void Setup()
@@ -30,6 +34,9 @@ public class InvocationBenchmarks
         _typedInstance = _context.CreateInstance<IAdder>("Adder");
         _addMethod = _typedInstance.GetType().GetMethod("Add")!;
         _addArguments = [3, 4];
+        _methodInvoker = _context.CreateMethodInvoker("Adder", "Add", new[] { typeof(int), typeof(int) });
+        _objectAdapter2 = _context.CreateObjectAdapter2("Adder", _typedInstance, "Add", new[] { typeof(int), typeof(int) });
+        _argumentListAdapter = _context.CreateArgumentListAdapter("Adder", _typedInstance, "Add", new[] { typeof(int), typeof(int) });
     }
 
     [Benchmark]
@@ -43,6 +50,18 @@ public class InvocationBenchmarks
     [Benchmark]
     public int CallViaReflection()
         => (int)_addMethod.Invoke(_typedInstance, _addArguments)!;
+
+    [Benchmark]
+    public int CallViaMethodInvokerWithNewArray()
+        => (int)_methodInvoker.Invoke(_typedInstance, new object[] { 3, 4 });
+
+    [Benchmark]
+    public int CallViaFixedObjectAdapter2()
+        => (int)_objectAdapter2(3, 4);
+
+    [Benchmark]
+    public int CallViaArgumentListAdapter()
+        => (int)_argumentListAdapter.Invoke(_addArguments);
 
     public interface IAdder
     {
