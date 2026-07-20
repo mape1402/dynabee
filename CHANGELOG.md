@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.2.6] - 2026-07-19
+
+### Added
+- Added runtime delegate-type overloads for bound generated method delegates through `CreateBoundDelegate(Type, ...)`.
+- Added runtime delegate-type overloads for generated constructor factories through `CreateFactoryDelegate(Type, ...)`.
+- Added fixed-arity object adapters for two-argument and three-argument generated methods through `CreateObjectAdapter2(...)` and `CreateObjectAdapter3(...)`.
+- Added high-arity object method adapters through `IDynaBeeObjectMethodAdapter` and `CreateArgumentListAdapter(...)`.
+- Added invocation benchmarks comparing reflection, generated method invokers, fixed object adapters, and argument-list adapters.
+- Added tests for runtime delegate creation, runtime factory creation, multi-argument object adapters, context-aware adapters, high-arity adapters, and clear adapter argument errors.
+
+### Changed
+- Object adapter dispatch now validates argument assignability with Dynabee resolution errors instead of leaking raw cast failures.
+
 ## [v1.2.5] - 2026-07-19
 
 ### Added
