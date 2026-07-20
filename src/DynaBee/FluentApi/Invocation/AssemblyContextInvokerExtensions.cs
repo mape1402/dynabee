@@ -73,10 +73,29 @@ namespace DynaBee.FluentApi.Invocation
             string methodName,
             IReadOnlyList<Type> parameterTypes)
             where TDelegate : Delegate
+            => (TDelegate)context.CreateBoundDelegate(typeof(TDelegate), typeName, instance, methodName, parameterTypes);
+
+        /// <summary>
+        /// Creates a typed delegate, provided at runtime, bound to a generated method target instance.
+        /// </summary>
+        /// <param name="context">Generated assembly context.</param>
+        /// <param name="delegateType">Delegate type that matches the generated method signature.</param>
+        /// <param name="typeName">Generated type name.</param>
+        /// <param name="instance">Target object instance.</param>
+        /// <param name="methodName">Method name.</param>
+        /// <param name="parameterTypes">Requested method parameter types.</param>
+        /// <returns>A delegate instance assignable to <paramref name="delegateType"/>.</returns>
+        public static object CreateBoundDelegate(
+            this IAssemblyContext context,
+            Type delegateType,
+            string typeName,
+            object instance,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes)
         {
             var resolved = ResolveGeneratedMethod(context, typeName, methodName, parameterTypes);
             ValidateTargetInstance(context.Name, typeName, methodName, parameterTypes, resolved.TypeContext.ClrType, instance);
-            return (TDelegate)resolved.Method.CreateDelegate(typeof(TDelegate), instance);
+            return CompileBoundDelegate(context.Name, typeName, methodName, parameterTypes, resolved.TypeContext.ClrType, resolved.Method, delegateType, instance);
         }
 
         /// <summary>
@@ -112,6 +131,21 @@ namespace DynaBee.FluentApi.Invocation
             string typeName,
             IReadOnlyList<Type> parameterTypes)
             where TDelegate : Delegate
+            => (TDelegate)context.CreateFactoryDelegate(typeof(TDelegate), typeName, parameterTypes);
+
+        /// <summary>
+        /// Creates a factory delegate, provided at runtime, for a generated type constructor.
+        /// </summary>
+        /// <param name="context">Generated assembly context.</param>
+        /// <param name="delegateType">Delegate type whose parameters match the constructor and whose return type is assignable from the generated type.</param>
+        /// <param name="typeName">Generated type name.</param>
+        /// <param name="parameterTypes">Requested constructor parameter types.</param>
+        /// <returns>A delegate instance assignable to <paramref name="delegateType"/>.</returns>
+        public static object CreateFactoryDelegate(
+            this IAssemblyContext context,
+            Type delegateType,
+            string typeName,
+            IReadOnlyList<Type> parameterTypes)
         {
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
@@ -121,7 +155,7 @@ namespace DynaBee.FluentApi.Invocation
 
             var typeContext = ResolveTypeContext(context, typeName, ".ctor", parameterTypes);
             var constructor = ResolveConstructor(context, typeContext.ClrType, typeName, parameterTypes);
-            return CompileFactory<TDelegate>(context.Name, typeName, parameterTypes, typeContext.ClrType, constructor);
+            return CompileFactory(context.Name, typeName, parameterTypes, typeContext.ClrType, constructor, delegateType);
         }
 
         /// <summary>
@@ -156,16 +190,102 @@ namespace DynaBee.FluentApi.Invocation
             var resolved = ResolveGeneratedMethod(context, typeName, methodName, parameterTypes);
             ValidateTargetInstance(context.Name, typeName, methodName, parameterTypes, resolved.TypeContext.ClrType, instance);
 
-            var argument = Expression.Parameter(typeof(object), "argument");
-            var call = Expression.Call(
-                Expression.Constant(instance, resolved.TypeContext.ClrType),
+            return CompileObjectAdapter<Func<object, object>>(
+                context.Name,
+                typeName,
+                methodName,
+                parameterTypes,
+                resolved.TypeContext.ClrType,
                 resolved.Method,
-                Expression.Convert(argument, parameterTypes[0]));
-            Expression body = resolved.Method.ReturnType == typeof(void)
-                ? Expression.Block(call, Expression.Constant(null, typeof(object)))
-                : Expression.Convert(call, typeof(object));
+                instance,
+                Expression.Parameter(typeof(object), "argument"));
+        }
 
-            return Expression.Lambda<Func<object, object>>(body, argument).Compile();
+        /// <summary>
+        /// Creates a fast object-to-object adapter around a two-argument generated method.
+        /// </summary>
+        /// <param name="context">Generated assembly context.</param>
+        /// <param name="typeName">Generated type name.</param>
+        /// <param name="instance">Target object instance.</param>
+        /// <param name="methodName">Method name.</param>
+        /// <param name="parameterTypes">Requested method parameter types. Exactly two parameters are required.</param>
+        /// <returns>An object adapter that casts its inputs, calls the generated method, and boxes the result when needed.</returns>
+        public static Func<object, object, object> CreateObjectAdapter2(
+            this IAssemblyContext context,
+            string typeName,
+            object instance,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes)
+        {
+            ValidateObjectAdapterArity(context, typeName, methodName, parameterTypes, 2);
+            var resolved = ResolveGeneratedMethod(context, typeName, methodName, parameterTypes);
+            ValidateTargetInstance(context.Name, typeName, methodName, parameterTypes, resolved.TypeContext.ClrType, instance);
+
+            return CompileObjectAdapter<Func<object, object, object>>(
+                context.Name,
+                typeName,
+                methodName,
+                parameterTypes,
+                resolved.TypeContext.ClrType,
+                resolved.Method,
+                instance,
+                Expression.Parameter(typeof(object), "argument1"),
+                Expression.Parameter(typeof(object), "argument2"));
+        }
+
+        /// <summary>
+        /// Creates a fast object-to-object adapter around a three-argument generated method.
+        /// </summary>
+        /// <param name="context">Generated assembly context.</param>
+        /// <param name="typeName">Generated type name.</param>
+        /// <param name="instance">Target object instance.</param>
+        /// <param name="methodName">Method name.</param>
+        /// <param name="parameterTypes">Requested method parameter types. Exactly three parameters are required.</param>
+        /// <returns>An object adapter that casts its inputs, calls the generated method, and boxes the result when needed.</returns>
+        public static Func<object, object, object, object> CreateObjectAdapter3(
+            this IAssemblyContext context,
+            string typeName,
+            object instance,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes)
+        {
+            ValidateObjectAdapterArity(context, typeName, methodName, parameterTypes, 3);
+            var resolved = ResolveGeneratedMethod(context, typeName, methodName, parameterTypes);
+            ValidateTargetInstance(context.Name, typeName, methodName, parameterTypes, resolved.TypeContext.ClrType, instance);
+
+            return CompileObjectAdapter<Func<object, object, object, object>>(
+                context.Name,
+                typeName,
+                methodName,
+                parameterTypes,
+                resolved.TypeContext.ClrType,
+                resolved.Method,
+                instance,
+                Expression.Parameter(typeof(object), "argument1"),
+                Expression.Parameter(typeof(object), "argument2"),
+                Expression.Parameter(typeof(object), "argument3"));
+        }
+
+        /// <summary>
+        /// Creates an object-based adapter for a generated method with any supported arity.
+        /// </summary>
+        /// <param name="context">Generated assembly context.</param>
+        /// <param name="typeName">Generated type name.</param>
+        /// <param name="instance">Target object instance.</param>
+        /// <param name="methodName">Method name.</param>
+        /// <param name="parameterTypes">Requested method parameter types.</param>
+        /// <returns>An object-based method adapter.</returns>
+        public static IDynaBeeObjectMethodAdapter CreateArgumentListAdapter(
+            this IAssemblyContext context,
+            string typeName,
+            object instance,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes)
+        {
+            var resolved = ResolveGeneratedMethod(context, typeName, methodName, parameterTypes);
+            ValidateTargetInstance(context.Name, typeName, methodName, parameterTypes, resolved.TypeContext.ClrType, instance);
+            var dispatch = CompileArgumentListAdapter(context.Name, typeName, methodName, parameterTypes, resolved.TypeContext.ClrType, resolved.Method, instance);
+            return new DynaBeeObjectMethodAdapter(context.Name, typeName, methodName, parameterTypes.ToArray(), resolved.Method.ReturnType, dispatch);
         }
 
         /// <summary>
@@ -340,16 +460,15 @@ namespace DynaBee.FluentApi.Invocation
             return matches[0];
         }
 
-        private static TDelegate CompileFactory<TDelegate>(
+        private static Delegate CompileFactory(
             string assemblyName,
             string typeName,
             IReadOnlyList<Type> parameterTypes,
             Type generatedType,
-            ConstructorInfo constructor)
-            where TDelegate : Delegate
+            ConstructorInfo constructor,
+            Type delegateType)
         {
-            var invoke = typeof(TDelegate).GetMethod(nameof(Action.Invoke))
-                ?? throw CreateResolutionException(assemblyName, typeName, ".ctor", parameterTypes, $"Delegate '{typeof(TDelegate)}' has no Invoke method.");
+            var invoke = GetDelegateInvokeMethod(assemblyName, typeName, ".ctor", parameterTypes, delegateType);
             var delegateParameters = invoke.GetParameters();
 
             if (!ParametersMatch(delegateParameters, parameterTypes))
@@ -359,7 +478,7 @@ namespace DynaBee.FluentApi.Invocation
                     typeName,
                     ".ctor",
                     parameterTypes,
-                    $"Delegate '{typeof(TDelegate)}' parameters do not match the requested constructor parameter types.");
+                    $"Delegate '{delegateType}' parameters do not match the requested constructor parameter types.");
             }
 
             if (!invoke.ReturnType.IsAssignableFrom(generatedType))
@@ -377,7 +496,40 @@ namespace DynaBee.FluentApi.Invocation
                 .ToArray();
             var @new = Expression.New(constructor, parameters);
             Expression body = invoke.ReturnType == generatedType ? @new : Expression.Convert(@new, invoke.ReturnType);
-            return Expression.Lambda<TDelegate>(body, parameters).Compile();
+            return Expression.Lambda(delegateType, body, parameters).Compile();
+        }
+
+        private static Delegate CompileBoundDelegate(
+            string assemblyName,
+            string typeName,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            Type generatedType,
+            MethodInfo method,
+            Type delegateType,
+            object instance)
+        {
+            var invoke = GetDelegateInvokeMethod(assemblyName, typeName, methodName, parameterTypes, delegateType);
+            var delegateParameters = invoke.GetParameters();
+
+            if (!ParametersMatch(delegateParameters, parameterTypes))
+            {
+                throw CreateResolutionException(
+                    assemblyName,
+                    typeName,
+                    methodName,
+                    parameterTypes,
+                    $"Delegate '{delegateType}' parameters do not match the requested method parameter types.");
+            }
+
+            ValidateReturnType(assemblyName, typeName, methodName, parameterTypes, $"Delegate '{delegateType}'", invoke.ReturnType, method.ReturnType);
+
+            var parameters = delegateParameters
+                .Select(x => Expression.Parameter(x.ParameterType, x.Name ?? "arg"))
+                .ToArray();
+            var call = Expression.Call(Expression.Constant(instance, generatedType), method, parameters);
+            var body = BuildReturnBody(call, invoke.ReturnType, method.ReturnType);
+            return Expression.Lambda(delegateType, body, parameters).Compile();
         }
 
         private static TDelegate CompileOpenDelegate<TDelegate>(
@@ -447,6 +599,219 @@ namespace DynaBee.FluentApi.Invocation
                 : method.ReturnType == invoke.ReturnType ? call : Expression.Convert(call, invoke.ReturnType);
 
             return Expression.Lambda<TDelegate>(body, parameters).Compile();
+        }
+
+        private static TDelegate CompileObjectAdapter<TDelegate>(
+            string assemblyName,
+            string typeName,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            Type generatedType,
+            MethodInfo method,
+            object instance,
+            params ParameterExpression[] parameters)
+            where TDelegate : Delegate
+        {
+            if (parameters.Length != parameterTypes.Count)
+            {
+                throw CreateResolutionException(
+                    assemblyName,
+                    typeName,
+                    methodName,
+                    parameterTypes,
+                    $"Object adapter requires exactly {parameters.Length} method parameter(s), but {parameterTypes.Count} were provided.");
+            }
+
+            var arguments = parameters.Select((parameter, index) => CastAdapterArgumentExpression(
+                parameter,
+                parameterTypes[index],
+                index,
+                assemblyName,
+                typeName,
+                methodName,
+                parameterTypes));
+            var call = Expression.Call(Expression.Constant(instance, generatedType), method, arguments);
+            var body = BuildObjectReturnBody(call, method.ReturnType);
+            return Expression.Lambda<TDelegate>(body, parameters).Compile();
+        }
+
+        private static Func<IReadOnlyList<object>, object> CompileArgumentListAdapter(
+            string assemblyName,
+            string typeName,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            Type generatedType,
+            MethodInfo method,
+            object instance)
+        {
+            var argumentsParameter = Expression.Parameter(typeof(IReadOnlyList<object>), "arguments");
+            var indexer = typeof(IReadOnlyList<object>).GetProperty("Item")
+                ?? throw CreateResolutionException(assemblyName, typeName, methodName, parameterTypes, "IReadOnlyList<object> indexer was not found.");
+            var arguments = parameterTypes
+                .Select((parameterType, index) => CastAdapterArgumentExpression(
+                    Expression.Property(argumentsParameter, indexer, Expression.Constant(index)),
+                    parameterType,
+                    index,
+                    assemblyName,
+                    typeName,
+                    methodName,
+                    parameterTypes))
+                .ToArray();
+            var count = Expression.Property(argumentsParameter, typeof(IReadOnlyCollection<object>).GetProperty(nameof(IReadOnlyCollection<object>.Count))!);
+            var countMismatch = Expression.NotEqual(count, Expression.Constant(parameterTypes.Count));
+            var throwMismatch = Expression.Throw(
+                Expression.New(
+                    typeof(InvalidOperationException).GetConstructor(new[] { typeof(string) })!,
+                    Expression.Constant(CreateResolutionException(assemblyName, typeName, methodName, parameterTypes, $"Argument count mismatch. Expected {parameterTypes.Count}.").Message)),
+                typeof(object));
+            var call = Expression.Call(Expression.Constant(instance, generatedType), method, arguments);
+            var body = Expression.Condition(countMismatch, throwMismatch, BuildObjectReturnBody(call, method.ReturnType));
+
+            return Expression.Lambda<Func<IReadOnlyList<object>, object>>(body, argumentsParameter).Compile();
+        }
+
+        private static void ValidateObjectAdapterArity(
+            IAssemblyContext context,
+            string typeName,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            int arity)
+        {
+            if (parameterTypes == null)
+                throw new ArgumentNullException(nameof(parameterTypes));
+
+            if (parameterTypes.Count != arity)
+            {
+                throw CreateResolutionException(
+                    context?.Name,
+                    typeName,
+                    methodName,
+                    parameterTypes,
+                    $"Object adapter requires exactly {arity} method parameter(s), but {parameterTypes.Count} were provided.");
+            }
+        }
+
+        private static MethodInfo GetDelegateInvokeMethod(
+            string assemblyName,
+            string typeName,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            Type delegateType)
+        {
+            if (delegateType == null)
+                throw new ArgumentNullException(nameof(delegateType));
+
+            if (!typeof(Delegate).IsAssignableFrom(delegateType))
+            {
+                throw CreateResolutionException(
+                    assemblyName,
+                    typeName,
+                    methodName,
+                    parameterTypes,
+                    $"Type '{delegateType.FullName}' is not a delegate type.");
+            }
+
+            return delegateType.GetMethod(nameof(Action.Invoke))
+                ?? throw CreateResolutionException(assemblyName, typeName, methodName, parameterTypes, $"Delegate '{delegateType}' has no Invoke method.");
+        }
+
+        private static void ValidateReturnType(
+            string assemblyName,
+            string typeName,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            string delegateDescription,
+            Type delegateReturnType,
+            Type methodReturnType)
+        {
+            if (delegateReturnType == typeof(void))
+                return;
+
+            if (methodReturnType == typeof(void))
+            {
+                throw CreateResolutionException(
+                    assemblyName,
+                    typeName,
+                    methodName,
+                    parameterTypes,
+                    $"{delegateDescription} expects return type '{delegateReturnType.FullName}', but method returns void.");
+            }
+
+            if (!delegateReturnType.IsAssignableFrom(methodReturnType))
+            {
+                throw CreateResolutionException(
+                    assemblyName,
+                    typeName,
+                    methodName,
+                    parameterTypes,
+                    $"{delegateDescription} return type '{delegateReturnType.FullName}' is not assignable from method return type '{methodReturnType.FullName}'.");
+            }
+        }
+
+        private static Expression BuildReturnBody(Expression call, Type delegateReturnType, Type methodReturnType)
+        {
+            if (delegateReturnType == typeof(void))
+                return methodReturnType == typeof(void) ? call : Expression.Block(call, Expression.Empty());
+
+            return methodReturnType == delegateReturnType ? call : Expression.Convert(call, delegateReturnType);
+        }
+
+        private static Expression BuildObjectReturnBody(Expression call, Type methodReturnType)
+            => methodReturnType == typeof(void)
+                ? Expression.Block(call, Expression.Constant(null, typeof(object)))
+                : Expression.Convert(call, typeof(object));
+
+        private static Expression CastAdapterArgumentExpression(
+            Expression value,
+            Type expectedType,
+            int index,
+            string assemblyName,
+            string typeName,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes)
+            => Expression.Convert(
+                Expression.Call(
+                    typeof(AssemblyContextInvokerExtensions).GetMethod(nameof(CastAdapterArgument), BindingFlags.NonPublic | BindingFlags.Static)!,
+                    value,
+                    Expression.Constant(expectedType, typeof(Type)),
+                    Expression.Constant(index),
+                    Expression.Constant(assemblyName),
+                    Expression.Constant(typeName),
+                    Expression.Constant(methodName),
+                    Expression.Constant(parameterTypes.ToArray(), typeof(IReadOnlyList<Type>))),
+                expectedType);
+
+        private static object CastAdapterArgument(
+            object value,
+            Type expectedType,
+            int index,
+            string assemblyName,
+            string typeName,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes)
+        {
+            if (CanAssign(value, expectedType))
+                return value;
+
+            var actualType = value?.GetType().FullName ?? "<null>";
+            throw CreateResolutionException(
+                assemblyName,
+                typeName,
+                methodName,
+                parameterTypes,
+                $"Argument {index} cannot be assigned. Expected '{expectedType.FullName}', received '{actualType}'.");
+        }
+
+        private static bool CanAssign(object value, Type expectedType)
+        {
+            if (value == null)
+                return !expectedType.IsValueType || Nullable.GetUnderlyingType(expectedType) != null;
+
+            if (expectedType.IsInstanceOfType(value))
+                return true;
+
+            var nullableUnderlying = Nullable.GetUnderlyingType(expectedType);
+            return nullableUnderlying != null && nullableUnderlying.IsInstanceOfType(value);
         }
 
         private static void ValidateTargetInstance(
@@ -654,6 +1019,95 @@ namespace DynaBee.FluentApi.Invocation
 
         public object Invoke(IReadOnlyList<object> arguments)
             => _invoker.Invoke(_instance, arguments);
+    }
+
+    internal sealed class DynaBeeObjectMethodAdapter : IDynaBeeObjectMethodAdapter
+    {
+        private readonly string _assemblyName;
+        private readonly string _typeName;
+        private readonly string _methodName;
+        private readonly Func<IReadOnlyList<object>, object> _dispatch;
+
+        public DynaBeeObjectMethodAdapter(
+            string assemblyName,
+            string typeName,
+            string methodName,
+            IReadOnlyList<Type> parameterTypes,
+            Type returnType,
+            Func<IReadOnlyList<object>, object> dispatch)
+        {
+            _assemblyName = assemblyName;
+            _typeName = typeName;
+            _methodName = methodName;
+            ParameterTypes = parameterTypes ?? throw new ArgumentNullException(nameof(parameterTypes));
+            ReturnType = returnType ?? throw new ArgumentNullException(nameof(returnType));
+            _dispatch = dispatch ?? throw new ArgumentNullException(nameof(dispatch));
+        }
+
+        public IReadOnlyList<Type> ParameterTypes { get; }
+
+        public Type ReturnType { get; }
+
+        public object Invoke(IReadOnlyList<object> arguments)
+        {
+            if (arguments == null)
+                throw new ArgumentNullException(nameof(arguments));
+
+            if (arguments.Count != ParameterTypes.Count)
+            {
+                throw AssemblyContextInvokerExtensions.CreateResolutionException(
+                    _assemblyName,
+                    _typeName,
+                    _methodName,
+                    ParameterTypes,
+                    $"Argument count mismatch. Expected {ParameterTypes.Count}, received {arguments.Count}.");
+            }
+
+            try
+            {
+                return _dispatch(arguments);
+            }
+            catch (InvalidCastException ex)
+            {
+                throw CreateArgumentException(arguments, ex);
+            }
+            catch (NullReferenceException ex)
+            {
+                throw CreateArgumentException(arguments, ex);
+            }
+        }
+
+        private InvalidOperationException CreateArgumentException(IReadOnlyList<object> arguments, Exception innerException)
+        {
+            for (var i = 0; i < ParameterTypes.Count; i++)
+            {
+                if (!CanAssign(arguments[i], ParameterTypes[i]))
+                {
+                    var actualType = arguments[i]?.GetType().FullName ?? "<null>";
+                    return AssemblyContextInvokerExtensions.CreateResolutionException(
+                        _assemblyName,
+                        _typeName,
+                        _methodName,
+                        ParameterTypes,
+                        $"Argument {i} cannot be assigned. Expected '{ParameterTypes[i].FullName}', received '{actualType}'.",
+                        innerException);
+                }
+            }
+
+            return AssemblyContextInvokerExtensions.CreateResolutionException(_assemblyName, _typeName, _methodName, ParameterTypes, "The adapter invocation failed.", innerException);
+        }
+
+        private static bool CanAssign(object value, Type expectedType)
+        {
+            if (value == null)
+                return !expectedType.IsValueType || Nullable.GetUnderlyingType(expectedType) != null;
+
+            if (expectedType.IsInstanceOfType(value))
+                return true;
+
+            var nullableUnderlying = Nullable.GetUnderlyingType(expectedType);
+            return nullableUnderlying != null && nullableUnderlying.IsInstanceOfType(value);
+        }
     }
 
     internal delegate object DynaBeeMethodDispatch(object instance, object[] arguments);
