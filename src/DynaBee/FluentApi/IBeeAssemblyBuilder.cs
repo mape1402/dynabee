@@ -1,5 +1,6 @@
 namespace DynaBee.FluentApi
 {
+    using DynaBee;
     using DynaBee.Infrastructure;
 
     /// <summary>
@@ -21,6 +22,16 @@ namespace DynaBee.FluentApi
         /// Enables in-memory cache for this build operation.
         /// </summary>
         BeeAssemblyBuilder EnableCache();
+
+        /// <summary>
+        /// Stores metadata for the generated assembly context.
+        /// </summary>
+        BeeAssemblyBuilder WithMetadata(string key, object value);
+
+        /// <summary>
+        /// Stores strongly typed metadata for the generated assembly context.
+        /// </summary>
+        BeeAssemblyBuilder WithMetadata<T>(BeeMetadataKey<T> key, T value);
 
         /// <summary>
         /// Adds a dynamic class using public visibility.

@@ -17,6 +17,11 @@
         Type ClrType { get; }
 
         /// <summary>
+        /// Gets metadata attached to this generated type.
+        /// </summary>
+        IReadOnlyDictionary<string, object> Metadata { get; }
+
+        /// <summary>
         /// Finds a single element within the type by its unique name.
         /// </summary>
         /// <param name="name">The unique name of the element to find.</param>

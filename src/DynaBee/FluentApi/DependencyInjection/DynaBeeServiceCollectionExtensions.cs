@@ -140,6 +140,38 @@ namespace DynaBee.FluentApi.DependencyInjection
         }
 
         /// <summary>
+        /// Registers generated types from an existing assembly context in DI using custom registration options.
+        /// </summary>
+        /// <param name="services">DI service collection.</param>
+        /// <param name="context">Generated assembly context.</param>
+        /// <param name="configureOptions">Registration options callback.</param>
+        /// <param name="lifetime">Default service lifetime for generated registrations.</param>
+        /// <returns>The same service collection.</returns>
+        public static IServiceCollection AddDynaBee(
+            this IServiceCollection services,
+            IAssemblyContext context,
+            Action<DynaBeeServiceRegistrationOptions> configureOptions,
+            ServiceLifetime lifetime = ServiceLifetime.Transient)
+        {
+            if (services == null)
+                throw new ArgumentNullException(nameof(services));
+
+            if (context == null)
+                throw new ArgumentNullException(nameof(context));
+
+            if (configureOptions == null)
+                throw new ArgumentNullException(nameof(configureOptions));
+
+            var options = new DynaBeeServiceRegistrationOptions();
+            configureOptions(options);
+
+            services.AddSingleton(context);
+            RegisterGeneratedTypes(services, context, lifetime, options);
+
+            return services;
+        }
+
+        /// <summary>
         /// Registers generated concrete types from the current provider snapshot in DI.
         /// </summary>
         /// <param name="services">DI service collection.</param>
@@ -157,10 +189,31 @@ namespace DynaBee.FluentApi.DependencyInjection
             return services.AddDynaBee(provider.Current, lifetime);
         }
 
+        /// <summary>
+        /// Registers generated types from the current provider snapshot in DI using custom registration options.
+        /// </summary>
+        /// <param name="services">DI service collection.</param>
+        /// <param name="provider">Assembly context provider.</param>
+        /// <param name="configureOptions">Registration options callback.</param>
+        /// <param name="lifetime">Default service lifetime for generated registrations.</param>
+        /// <returns>The same service collection.</returns>
+        public static IServiceCollection AddDynaBee(
+            this IServiceCollection services,
+            IAssemblyContextProvider provider,
+            Action<DynaBeeServiceRegistrationOptions> configureOptions,
+            ServiceLifetime lifetime = ServiceLifetime.Transient)
+        {
+            if (provider == null)
+                throw new ArgumentNullException(nameof(provider));
+
+            return services.AddDynaBee(provider.Current, configureOptions, lifetime);
+        }
+
         private static void RegisterGeneratedTypes(
             IServiceCollection services,
             IAssemblyContext context,
-            ServiceLifetime lifetime)
+            ServiceLifetime lifetime,
+            DynaBeeServiceRegistrationOptions options = null)
         {
             var concreteTypes = context
                 .Find(_ => true)
@@ -170,18 +223,41 @@ namespace DynaBee.FluentApi.DependencyInjection
             foreach (var typeContext in concreteTypes)
             {
                 var implementationType = typeContext.ClrType;
-                var registerConcreteType = ResolveRegisterConcreteType(typeContext);
+                var matchingRules = options?.Rules.Where(rule => rule.Predicate(typeContext)).ToArray()
+                    ?? Array.Empty<DynaBeeGeneratedTypeRegistrationRule>();
+
+                var registerConcreteType = ResolveRegisterConcreteType(typeContext, matchingRules);
                 if (registerConcreteType)
                     services.Add(new ServiceDescriptor(implementationType, implementationType, lifetime));
 
                 var interfaceRegistrations = ResolveInterfaceRegistrations(typeContext, implementationType);
                 foreach (var serviceType in interfaceRegistrations)
                     services.Add(new ServiceDescriptor(serviceType, implementationType, lifetime));
+
+                var serviceRegistrations = ResolveServiceRegistrations(typeContext, implementationType)
+                    .Select(serviceType => (ServiceType: serviceType, Lifetime: lifetime));
+                var optionRegistrations = matchingRules
+                    .SelectMany(rule => rule.ServiceTypes.Select(serviceType => (ServiceType: serviceType, Lifetime: rule.Lifetime ?? lifetime)));
+
+                foreach (var registration in serviceRegistrations.Concat(optionRegistrations))
+                {
+                    if (!registration.ServiceType.IsAssignableFrom(implementationType))
+                        continue;
+
+                    services.Add(new ServiceDescriptor(registration.ServiceType, implementationType, registration.Lifetime));
+                }
+
+                foreach (var descriptor in matchingRules.SelectMany(rule => rule.Projections.SelectMany(project => project(typeContext) ?? Enumerable.Empty<ServiceDescriptor>())))
+                    services.Add(descriptor);
             }
         }
 
-        private static bool ResolveRegisterConcreteType(ITypeContext typeContext)
+        private static bool ResolveRegisterConcreteType(ITypeContext typeContext, IReadOnlyList<DynaBeeGeneratedTypeRegistrationRule> matchingRules)
         {
+            var configuredConcreteRule = matchingRules.LastOrDefault(rule => rule.RegisterConcrete.HasValue);
+            if (configuredConcreteRule?.RegisterConcrete != null)
+                return configuredConcreteRule.RegisterConcrete.Value;
+
             if (typeContext.TryGetMetadata(BeeDiMetadataKeys.RegisterAsConcrete, out var value) && value is bool registerAsConcrete)
                 return registerAsConcrete;
 
@@ -197,6 +273,17 @@ namespace DynaBee.FluentApi.DependencyInjection
             }
 
             return implementationType.GetInterfaces();
+        }
+
+        private static IEnumerable<Type> ResolveServiceRegistrations(ITypeContext typeContext, Type implementationType)
+        {
+            if (typeContext.TryGetMetadata(BeeDiMetadataKeys.ServiceRegistrations, out var value) &&
+                value is Dictionary<Type, bool> serviceRegistrations)
+            {
+                return serviceRegistrations.Where(x => x.Value).Select(x => x.Key);
+            }
+
+            return Enumerable.Empty<Type>();
         }
     }
 }

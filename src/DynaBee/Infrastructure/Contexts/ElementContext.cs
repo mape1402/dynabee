@@ -27,6 +27,11 @@
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
+        public IReadOnlyDictionary<string, object> Metadata => _metadata;
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
         public object GetMetadata(string key)
         {
             if (!_metadata.ContainsKey(key))

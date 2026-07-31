@@ -9,6 +9,7 @@
     internal sealed class AssemblyContextBuilder : IAssemblyContextBuilder
     {
         private readonly Dictionary<string, ITypeContextBuilder> _typeBuilderContexts = new();
+        private readonly Dictionary<string, object> _metadata = new();
         private readonly string _name;
         private readonly AssemblyBuilder _assemblyBuilder;
 
@@ -42,6 +43,17 @@
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
+        public void SetMetadata(string key, object value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new ArgumentException(nameof(key));
+
+            _metadata[key] = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
         public ITypeContextBuilder GetTypeBuilder(string name)
         {
             if (!_typeBuilderContexts.ContainsKey(name))
@@ -56,7 +68,7 @@
         public IAssemblyContext Build()
         {
             var typeContexts = _typeBuilderContexts.Values.Select(x => x.Build());
-            return new AssemblyContext(_name, _assemblyBuilder, typeContexts);
+            return new AssemblyContext(_name, _assemblyBuilder, typeContexts, _metadata);
         }
     }
 }

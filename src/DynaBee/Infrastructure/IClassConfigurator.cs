@@ -33,6 +33,14 @@
         IClassConfigurator RegisterAsConcrete(bool register = true);
 
         /// <summary>
+        /// Sets whether this dynamic class should be registered as a specific service type in DI.
+        /// </summary>
+        /// <param name="serviceType">Service type to register.</param>
+        /// <param name="registerInDi">True to register the service type; otherwise false.</param>
+        /// <returns>The current configurator for fluent chaining.</returns>
+        IClassConfigurator RegisterAs(Type serviceType, bool registerInDi = true);
+
+        /// <summary>
         /// Stores metadata for the generated class context.
         /// </summary>
         /// <param name="key">Metadata key.</param>

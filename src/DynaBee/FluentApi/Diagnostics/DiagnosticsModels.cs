@@ -16,6 +16,11 @@ namespace DynaBee.FluentApi.Diagnostics
         public string Version { get; init; }
 
         /// <summary>
+        /// Gets metadata keys attached to the generated assembly context.
+        /// </summary>
+        public IReadOnlyCollection<string> MetadataKeys { get; init; } = Array.Empty<string>();
+
+        /// <summary>
         /// Gets diagnostic details for generated types.
         /// </summary>
         public IReadOnlyCollection<TypeDiagnostic> Types { get; init; } = Array.Empty<TypeDiagnostic>();
@@ -45,6 +50,21 @@ namespace DynaBee.FluentApi.Diagnostics
         /// Gets the type access modifier.
         /// </summary>
         public string AccessModifier { get; init; }
+
+        /// <summary>
+        /// Gets the full name of the generated type base type.
+        /// </summary>
+        public string BaseType { get; init; }
+
+        /// <summary>
+        /// Gets generated type interface full names.
+        /// </summary>
+        public IReadOnlyCollection<string> Interfaces { get; init; } = Array.Empty<string>();
+
+        /// <summary>
+        /// Gets metadata keys attached to the generated type context.
+        /// </summary>
+        public IReadOnlyCollection<string> MetadataKeys { get; init; } = Array.Empty<string>();
 
         /// <summary>
         /// Gets custom attributes declared on the type.
@@ -81,6 +101,11 @@ namespace DynaBee.FluentApi.Diagnostics
         /// Gets the member access modifier.
         /// </summary>
         public string AccessModifier { get; init; }
+
+        /// <summary>
+        /// Gets metadata keys attached to the generated member context.
+        /// </summary>
+        public IReadOnlyCollection<string> MetadataKeys { get; init; } = Array.Empty<string>();
 
         /// <summary>
         /// Gets custom attributes declared on the member.

@@ -329,7 +329,7 @@ namespace DynaBee.FluentApi.Body
                 return new BeeDynamicPropertyExpression(RequireExpression(instance), name, dynamicProperty);
             }
 
-            var property = instance.Type.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            var property = ResolveInstanceProperty(instance.Type, name)
                 ?? throw new MissingMemberException(instance.Type.FullName, name);
 
             return new BeePropertyExpression(RequireExpression(instance), property);
@@ -363,10 +363,34 @@ namespace DynaBee.FluentApi.Body
                 return new BeeFieldExpression(RequireExpression(instance), dynamicField);
             }
 
-            var field = instance.Type.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            var field = ResolveInstanceField(instance.Type, name)
                 ?? throw new MissingFieldException(instance.Type.FullName, name);
 
             return new BeeFieldExpression(RequireExpression(instance), field);
+        }
+
+        private static PropertyInfo ResolveInstanceProperty(Type type, string name)
+        {
+            try
+            {
+                return type.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+            catch (NotSupportedException) when (type is TypeBuilder typeBuilder)
+            {
+                return typeBuilder.BaseType?.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+        }
+
+        private static FieldInfo ResolveInstanceField(Type type, string name)
+        {
+            try
+            {
+                return type.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+            catch (NotSupportedException) when (type is TypeBuilder typeBuilder)
+            {
+                return typeBuilder.BaseType?.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            }
         }
 
         public IBeeAssignableExpression StaticField(Type declaringType, string name)

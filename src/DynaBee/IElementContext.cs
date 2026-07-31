@@ -17,6 +17,11 @@
         ElementType ElementType { get; }
 
         /// <summary>
+        /// Gets metadata attached to this generated element.
+        /// </summary>
+        IReadOnlyDictionary<string, object> Metadata { get; }
+
+        /// <summary>
         /// Gets metadata attached to this element.
         /// </summary>
         /// <param name="key">Metadata key.</param>

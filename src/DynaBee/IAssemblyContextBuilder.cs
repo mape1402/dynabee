@@ -28,6 +28,13 @@
         ITypeContextBuilder AddTypeBuilder(string name, TypeBuilder typeBuilder);
 
         /// <summary>
+        /// Stores metadata for the generated assembly context.
+        /// </summary>
+        /// <param name="key">Metadata key.</param>
+        /// <param name="value">Metadata value.</param>
+        void SetMetadata(string key, object value);
+
+        /// <summary>
         /// Finalizes the assembly context construction and returns an immutable <see cref="IAssemblyContext"/>
         /// containing all registered type definitions.
         /// </summary>

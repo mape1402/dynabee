@@ -12,6 +12,9 @@ The recommended application model is DI-first: define `DynaBeeProfile` classes, 
 - Fluent creation of classes, interfaces, structs, enums, and records.
 - Method implementation through IL, lambdas, expression trees, or high-level method body builders.
 - Dependency injection integration.
+- DI-first generation plans that consumer libraries can inspect before emission.
+- Base constructor forwarding and virtual/abstract method or property overrides without consumer-side emit plumbing.
+- Selective DI registration as concrete types, interfaces, or arbitrary assignable service/base types.
 - Typed metadata for external extensions (for example EF or other frameworks).
 - Assembly cache/versioning to reduce type build overhead.
 
@@ -143,7 +146,101 @@ var provider = services.BuildServiceProvider();
 var context = provider.GetRequiredService<IAssemblyContext>();
 ```
 
-### 4) Method body builder for mapper generation
+### 4) Descriptor-driven generation plans
+
+Consumer libraries can normalize their own descriptors into a DynaBee generation
+plan, inspect that plan before emission, and then apply it to any
+`IBeeAssemblyBuilder` supplied by the DI-first registry/factory pipeline.
+
+Plans are generic: they describe runtime types, inheritance, implemented
+interfaces, constructors, members, DI registration metadata, and descriptor
+correlation metadata. They do not impose application-level semantics.
+
+```csharp
+using DynaBee.FluentApi;
+using DynaBee.FluentApi.DependencyInjection;
+using DynaBee.FluentApi.Generation;
+using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
+
+var executeMethod = typeof(RuntimeHandlerBase)
+    .GetMethod(nameof(RuntimeHandlerBase.Execute))!;
+
+var baseConstructor = typeof(RuntimeHandlerBase)
+    .GetConstructor(
+        BindingFlags.Instance | BindingFlags.NonPublic,
+        binder: null,
+        new[] { typeof(IServiceProvider) },
+        modifiers: null)!;
+
+var plan = new DynaBeeGenerationPlan("Demo.Handlers")
+    .WithMetadata("descriptor.batch", "handlers-v1")
+    .AddClass("GeneratedHandler", type => type
+        .Inherits(typeof(RuntimeHandlerBase))
+        .RegisterAs(typeof(RuntimeHandlerBase))
+        .RegisterAsConcrete(false)
+        .WithMetadata("descriptor.key", "handler:orders")
+        .AddConstructor(ctor => ctor
+            .WithParameter<IServiceProvider>("serviceProvider")
+            .CallsBase(baseConstructor, args => args.Argument("serviceProvider")))
+        .OverrideMethod(executeMethod, method => method
+            .EmitsBody(body => body.Return(body.Constant("Handled")))));
+
+// The plan can be inspected before any dynamic type is emitted.
+var plannedClass = plan.Classes[0];
+Console.WriteLine(plannedClass.BaseType);
+Console.WriteLine(plannedClass.Metadata["descriptor.key"]);
+
+var services = new ServiceCollection();
+services.AddSingleton<NameFormatter>();
+services.AddDynaBeeRegistry(plan.AssemblyName, registry =>
+{
+    registry.Configure(builder => plan.ApplyTo(builder));
+});
+
+var provider = services.BuildServiceProvider();
+var handler = provider.GetRequiredService<RuntimeHandlerBase>();
+
+var result = handler.Execute("orders"); // "Handled"
+
+public abstract class RuntimeHandlerBase
+{
+    protected RuntimeHandlerBase(IServiceProvider serviceProvider)
+    {
+        Formatter = serviceProvider.GetRequiredService<NameFormatter>();
+    }
+
+    protected NameFormatter Formatter { get; }
+
+    public abstract string Execute(string input);
+}
+
+public sealed class NameFormatter
+{
+    public string Format(string value) => $"Formatted: {value}";
+}
+```
+
+Generated classes can also override virtual or abstract properties:
+
+```csharp
+var nameProperty = typeof(RuntimeQueryBase)
+    .GetProperty(nameof(RuntimeQueryBase.Name))!;
+
+registry.Configure(builder => builder
+    .AddClass("GeneratedQuery", type => type
+        .Inherits(typeof(RuntimeQueryBase))
+        .OverrideProperty(nameProperty, property => property
+            .WithMetadata("descriptor.member", "query:name")
+            .Getter(get => get.ReturnsConstant("Orders")))));
+
+public abstract class RuntimeQueryBase
+{
+    public virtual string Name => "Base";
+}
+```
+
+### 5) Method body builder for mapper generation
 
 `EmitsBody(...)` lets integrations build complete method bodies without using
 IL opcodes. It supports parameters, locals, object construction, instance/static
@@ -194,7 +291,7 @@ public sealed class MappingProfile : DynaBeeProfile
 }
 ```
 
-### 5) DI-based resolver method bodies
+### 6) DI-based resolver method bodies
 
 DynaBee does not own service lifetimes. Instead, generated method bodies can call
 whatever service provider or resolver API your integration chooses. This keeps
@@ -285,7 +382,7 @@ builder.AddClass("OrderMapper", c => c
         })));
 ```
 
-### 6) Collection mapping method bodies
+### 7) Collection method bodies
 
 Collection-oriented generated methods can use loops, ordered comparisons,
 indexed access, runtime-sized arrays, and constructor calls with arguments.
@@ -434,7 +531,7 @@ builder.AddClass("ExpressionMapper", c => c
         })));
 ```
 
-### 7) Generated dispatch delegates
+### 8) Generated dispatch delegates
 
 When callers know the delegate shape they want, DynaBee can create typed
 delegates for generated methods and constructors. Method lookup happens once,
@@ -478,6 +575,20 @@ var createGreeter = context.CreateFactoryDelegate<Func<string, object>>(
 var greeter = createGreeter("Ada");
 ```
 
+Consumers that discover delegate types at runtime can still let DynaBee own
+delegate creation:
+
+```csharp
+var delegateType = typeof(Func<int, int, int>);
+
+var add = (Func<int, int, int>)context.CreateBoundDelegate(
+    delegateType,
+    "GeneratedAdder",
+    adder,
+    "Add",
+    new[] { typeof(int), typeof(int) });
+```
+
 For diagnostics, tracing, and cache keys, generated methods can be described
 with stable metadata:
 
@@ -490,19 +601,37 @@ var descriptor = context.GetGeneratedMethodDescriptor(
 Console.WriteLine($"{descriptor.DeclaringType.Name}.{descriptor.Name}");
 ```
 
-Object adapters are available for single-argument dynamic fallback paths:
+Object adapters are available for dynamic fallback paths without consumer-side
+reflection invocation. Fixed-arity adapters avoid per-call `object[]`
+allocation for common hot paths:
 
 ```csharp
-var adapter = context.CreateObjectAdapter(
-    "GeneratedDoubler",
-    doubler,
-    "Double",
-    new[] { typeof(int) });
+var addAdapter = context.CreateObjectAdapter2(
+    "GeneratedAdder",
+    adder,
+    "Add",
+    new[] { typeof(int), typeof(int) });
 
-var doubled = adapter(6); // boxed 12
+var sum = addAdapter(1, 2); // boxed 3
 ```
 
-### 8) Cached method invokers
+For higher arity, use an argument-list adapter with stable method metadata:
+
+```csharp
+var adapter = context.CreateArgumentListAdapter(
+    "GeneratedAggregator",
+    aggregator,
+    "Sum",
+    new[]
+    {
+        typeof(int), typeof(int), typeof(int), typeof(int), typeof(int),
+        typeof(int), typeof(int), typeof(int), typeof(int), typeof(int)
+    });
+
+var total = adapter.Invoke(new object[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
+```
+
+### 9) Cached method invokers
 
 DynaBee can create cached invokers for generated methods. The invoker resolves
 reflection metadata once, compiles a dispatch bridge, and avoids `MethodInfo.Invoke(...)`
@@ -559,6 +688,12 @@ Attach typed metadata in Fluent API, then consume it in external packages (for e
 
 ### 8) Metadata-driven EF or API model bootstrapping
 Use profiles to group dynamic entity definitions by logical assembly, then resolve the generated `IAssemblyContext` through `IDynaBeeAssemblyCatalog` while bootstrapping framework integrations.
+
+### 9) Descriptor-driven handler generation
+Transform normalized descriptors into generated classes that inherit framework base types, forward constructor dependencies, override virtual behavior, and register as runtime handler services.
+
+### 10) Replaceable generation backends
+Keep consumer libraries open to alternate generation strategies by converting their descriptors into `DynaBeeGenerationPlan` instances and applying those plans through `IBeeAssemblyBuilder`.
 
 ## Benchmarks
 

@@ -3,6 +3,7 @@ namespace DynaBee.FluentApi
     using DynaBee.Infrastructure;
     using System.Reflection.Emit;
     using DynaBee.Infrastructure.Configurators;
+    using System.Reflection;
 
     /// <summary>
     /// Fluent builder for a dynamic constructor.
@@ -12,6 +13,8 @@ namespace DynaBee.FluentApi
         private readonly List<(string Name, BeeType Type)> _parameters = new();
         private readonly Dictionary<string, object> _metadata = new();
         private Action<ILGenerator> _body;
+        private ConstructorInfo _baseConstructor;
+        private IReadOnlyList<string> _baseConstructorArgumentNames;
 
         /// <summary>
         /// Adds one constructor parameter.
@@ -37,6 +40,47 @@ namespace DynaBee.FluentApi
         public BeeConstructorBuilder Emits(Action<ILGenerator> body)
         {
             _body = body ?? throw new ArgumentNullException(nameof(body));
+            _baseConstructor = null;
+            _baseConstructorArgumentNames = null;
+            return this;
+        }
+
+        /// <summary>
+        /// Emits a constructor body that forwards selected generated constructor parameters to a base constructor.
+        /// </summary>
+        /// <param name="baseConstructor">Base constructor to call.</param>
+        /// <param name="configureArguments">Argument selector using generated constructor parameter names.</param>
+        /// <returns>The same constructor builder.</returns>
+        public BeeConstructorBuilder CallsBase(ConstructorInfo baseConstructor, Action<BeeConstructorBaseCallBuilder> configureArguments)
+        {
+            if (baseConstructor == null)
+                throw new ArgumentNullException(nameof(baseConstructor));
+
+            var argumentsBuilder = new BeeConstructorBaseCallBuilder();
+            configureArguments?.Invoke(argumentsBuilder);
+            return CallsBase(baseConstructor, argumentsBuilder.ArgumentNames);
+        }
+
+        /// <summary>
+        /// Emits a constructor body that forwards selected generated constructor parameters to a base constructor.
+        /// </summary>
+        /// <param name="baseConstructor">Base constructor to call.</param>
+        /// <param name="argumentNames">Generated constructor parameter names to pass to the base constructor.</param>
+        /// <returns>The same constructor builder.</returns>
+        public BeeConstructorBuilder CallsBase(ConstructorInfo baseConstructor, params string[] argumentNames)
+            => CallsBase(baseConstructor, (IReadOnlyList<string>)argumentNames);
+
+        private BeeConstructorBuilder CallsBase(ConstructorInfo baseConstructor, IReadOnlyList<string> argumentNames)
+        {
+            if (baseConstructor == null)
+                throw new ArgumentNullException(nameof(baseConstructor));
+
+            if (argumentNames == null)
+                throw new ArgumentNullException(nameof(argumentNames));
+
+            _baseConstructor = baseConstructor;
+            _baseConstructorArgumentNames = argumentNames.ToArray();
+            _body = null;
             return this;
         }
 
@@ -59,6 +103,6 @@ namespace DynaBee.FluentApi
             => WithMetadata(key.Name, value);
 
         internal ConstructorConfigurator ToConfigurator()
-            => new ConstructorConfigurator(_parameters, _body, _metadata);
+            => new ConstructorConfigurator(_parameters, _body, _metadata, _baseConstructor, _baseConstructorArgumentNames);
     }
 }

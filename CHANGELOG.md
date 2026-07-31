@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3.0] - 2026-07-31
+
+### Added
+- Added descriptor-driven generation plans through `DynaBeeGenerationPlan`, including inspectable class/member plans that can be applied to `IBeeAssemblyBuilder`.
+- Added assembly-level metadata support through `IBeeAssemblyBuilder.WithMetadata(...)` and readable metadata on `IAssemblyContext`.
+- Added public metadata dictionaries on assembly, type, and element contexts for diagnostics and descriptor correlation.
+- Added high-level constructor forwarding through `BeeConstructorBuilder.CallsBase(...)` for selected base constructors, including non-public base constructors.
+- Added method override support through `BeeClassBuilder.OverrideMethod(...)` with override validation and internal `DefineMethodOverride(...)` emission.
+- Added property override support through `BeeClassBuilder.OverrideProperty(...)`, `BeePropertyOverrideBuilder`, and `BeePropertyAccessorBuilder`.
+- Added constant-return property getter override support through `ReturnsConstant(...)`.
+- Added DI service registration metadata through `BeeClassBuilder.RegisterAs(...)` for registering generated classes as arbitrary assignable service or base types.
+- Added DI registration options through `DynaBeeServiceRegistrationOptions` for caller-provided service mappings, lifetimes, concrete registration control, and service descriptor projections.
+- Added diagnostics for generated type base types, interfaces, and metadata keys.
+- Added tests for generation plans, base constructor forwarding, method overrides, property overrides, assembly metadata, service/base-type DI registration, and registration options.
+
+### Changed
+- Method body `Self()` property and field access can now resolve inherited base members while the generated type is still being emitted.
+
 ## [v1.2.6] - 2026-07-19
 
 ### Added

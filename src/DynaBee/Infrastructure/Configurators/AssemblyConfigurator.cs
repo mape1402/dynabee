@@ -10,6 +10,7 @@
     internal class AssemblyConfigurator : IAssemblyConfigurator
     {
         private readonly List<ITypeConfigurator> _typeBuilders = new();
+        private readonly Dictionary<string, object> _metadata = new();
         private readonly string _name;
 
         public AssemblyConfigurator(string name)
@@ -29,6 +30,18 @@
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
+        public IAssemblyConfigurator WithMetadata(string key, object value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new ArgumentException(nameof(key));
+
+            _metadata[key] = value ?? throw new ArgumentNullException(nameof(value));
+            return this;
+        }
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
         public IAssemblyContextBuilder Configure()
         {
             var assemblyName = new AssemblyName(_name);
@@ -37,6 +50,8 @@
             var moduleBuilder = assemblyBuilder.DefineDynamicModule("MainModule");
 
             var assemblyContextBuilder = new AssemblyContextBuilder(_name, assemblyBuilder, moduleBuilder);
+            foreach (var metadata in _metadata)
+                assemblyContextBuilder.SetMetadata(metadata.Key, metadata.Value);
 
             foreach (var typeBuilder in _typeBuilders)
                 typeBuilder.Configure(assemblyContextBuilder); 
