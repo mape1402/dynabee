@@ -19,6 +19,7 @@ namespace DynaBee.Infrastructure.Configurators
         private readonly MethodAccessModifier _accessModifier;
         private readonly IReadOnlyCollection<BeeAttribute> _attributes;
         private readonly IReadOnlyDictionary<string, object> _metadata;
+        private readonly MethodInfo _overrideMethod;
 
         public MethodConfigurator(
             string name,
@@ -31,7 +32,8 @@ namespace DynaBee.Infrastructure.Configurators
             bool isStatic,
             MethodAccessModifier accessModifier,
             IReadOnlyCollection<BeeAttribute> attributes,
-            IReadOnlyDictionary<string, object> metadata = null)
+            IReadOnlyDictionary<string, object> metadata = null,
+            MethodInfo overrideMethod = null)
         {
             _name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException(nameof(name)) : name;
             _returnType = returnType;
@@ -44,6 +46,7 @@ namespace DynaBee.Infrastructure.Configurators
             _accessModifier = accessModifier;
             _attributes = attributes ?? Array.Empty<BeeAttribute>();
             _metadata = metadata ?? new Dictionary<string, object>();
+            _overrideMethod = overrideMethod;
         }
 
         public void Configure(ITypeContextBuilder typeContextBuilder)
@@ -58,12 +61,17 @@ namespace DynaBee.Infrastructure.Configurators
         {
             var returnType = ResolveType(_returnType, typeContextBuilder);
             var parameterTypes = _parameters.Select(x => ResolveType(x.Type, typeContextBuilder)).ToArray();
+            ValidateOverride(typeContextBuilder, returnType, parameterTypes);
 
-            var access = _accessModifier.IsDefault ? MethodAccessModifier.Public : _accessModifier;
+            var access = ResolveAccessModifier();
             var attributes = access.Attributes | MethodAttributes.HideBySig;
             if (_isStatic)
             {
                 attributes |= MethodAttributes.Static;
+            }
+            else if (_overrideMethod != null)
+            {
+                attributes |= MethodAttributes.Virtual;
             }
             else if ((attributes & MethodAttributes.MemberAccessMask) != MethodAttributes.Private)
             {
@@ -71,6 +79,9 @@ namespace DynaBee.Infrastructure.Configurators
             }
 
             var methodBuilder = typeContextBuilder.TypeBuilder.DefineMethod(_name, attributes, returnType, parameterTypes);
+            if (_overrideMethod != null)
+                typeContextBuilder.TypeBuilder.DefineMethodOverride(methodBuilder, _overrideMethod);
+
             if (typeContextBuilder is TypeContextBuilder concreteTypeContextBuilder)
                 concreteTypeContextBuilder.RegisterMethod(_name, parameterTypes, methodBuilder);
 
@@ -121,6 +132,73 @@ namespace DynaBee.Infrastructure.Configurators
             }
 
             _ilBody(il);
+        }
+
+        private void ValidateOverride(ITypeContextBuilder typeContextBuilder, Type returnType, Type[] parameterTypes)
+        {
+            if (_overrideMethod == null)
+                return;
+
+            if (_isStatic)
+                throw new InvalidOperationException($"Method '{_overrideMethod.Name}' cannot be overridden by a static method.");
+
+            if (!_overrideMethod.IsVirtual || _overrideMethod.IsFinal || _overrideMethod.IsPrivate)
+                throw new InvalidOperationException($"Method '{_overrideMethod.DeclaringType?.FullName}.{_overrideMethod.Name}' cannot be overridden because it is not an overridable virtual or abstract method.");
+
+            var generatedBaseType = typeContextBuilder.TypeBuilder.BaseType ?? typeof(object);
+            var declaringType = _overrideMethod.DeclaringType;
+            if (declaringType == null || !declaringType.IsAssignableFrom(generatedBaseType))
+            {
+                throw new InvalidOperationException(
+                    $"Method '{_overrideMethod.Name}' cannot be overridden because generated type '{typeContextBuilder.TypeBuilder.FullName}' does not inherit '{declaringType?.FullName}'.");
+            }
+
+            if (_overrideMethod.ReturnType != returnType)
+                throw new InvalidOperationException($"Override method '{_overrideMethod.Name}' must return '{_overrideMethod.ReturnType.FullName}', not '{returnType.FullName}'.");
+
+            var baseParameters = _overrideMethod.GetParameters();
+            if (baseParameters.Length != parameterTypes.Length)
+                throw new InvalidOperationException($"Override method '{_overrideMethod.Name}' must define {baseParameters.Length} parameter(s).");
+
+            for (var i = 0; i < baseParameters.Length; i++)
+            {
+                if (baseParameters[i].ParameterType != parameterTypes[i])
+                    throw new InvalidOperationException($"Override method '{_overrideMethod.Name}' parameter {i} must be '{baseParameters[i].ParameterType.FullName}', not '{parameterTypes[i].FullName}'.");
+            }
+
+            if (!_accessModifier.IsDefault && _accessModifier.Attributes != GetAccessModifier(_overrideMethod).Attributes)
+                throw new InvalidOperationException($"Override method '{_overrideMethod.Name}' must preserve base method access level '{GetAccessModifier(_overrideMethod)}'.");
+        }
+
+        private MethodAccessModifier ResolveAccessModifier()
+        {
+            if (!_accessModifier.IsDefault)
+                return _accessModifier;
+
+            if (_overrideMethod != null)
+                return GetAccessModifier(_overrideMethod);
+
+            return MethodAccessModifier.Public;
+        }
+
+        internal static MethodAccessModifier GetAccessModifier(MethodBase method)
+        {
+            if (method.IsPublic)
+                return MethodAccessModifier.Public;
+
+            if (method.IsFamily)
+                return MethodAccessModifier.Protected;
+
+            if (method.IsAssembly)
+                return MethodAccessModifier.Internal;
+
+            if (method.IsFamilyOrAssembly)
+                return MethodAccessModifier.ProtectedInternal;
+
+            if (method.IsFamilyAndAssembly)
+                return MethodAccessModifier.PrivateProtected;
+
+            return MethodAccessModifier.Private;
         }
 
         private static void EmitDefaultBody(ILGenerator il, Type returnType)

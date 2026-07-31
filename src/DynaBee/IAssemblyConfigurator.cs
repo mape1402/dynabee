@@ -18,6 +18,14 @@
         IAssemblyConfigurator AddTypeBuilder(ITypeConfigurator typeConfigurator);
 
         /// <summary>
+        /// Stores metadata for the generated assembly context.
+        /// </summary>
+        /// <param name="key">Metadata key.</param>
+        /// <param name="value">Metadata value.</param>
+        /// <returns>The current configurator for fluent chaining.</returns>
+        IAssemblyConfigurator WithMetadata(string key, object value);
+
+        /// <summary>
         /// Applies the assembly configuration and returns a builder context
         /// that can be used to generate the final dynamic assembly and its types.
         /// </summary>

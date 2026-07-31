@@ -1,5 +1,6 @@
 namespace DynaBee.FluentApi
 {
+    using DynaBee;
     using DynaBee.Infrastructure;
     using DynaBee.Infrastructure.Configurators;
     using System.Collections.Concurrent;
@@ -54,6 +55,28 @@ namespace DynaBee.FluentApi
             _cacheEnabled = true;
             return this;
         }
+
+        /// <summary>
+        /// Stores metadata for the generated assembly context.
+        /// </summary>
+        /// <param name="key">Metadata key.</param>
+        /// <param name="value">Metadata value.</param>
+        /// <returns>The same assembly builder.</returns>
+        public BeeAssemblyBuilder WithMetadata(string key, object value)
+        {
+            _assemblyConfigurator.WithMetadata(key, value);
+            return this;
+        }
+
+        /// <summary>
+        /// Stores strongly typed metadata for the generated assembly context.
+        /// </summary>
+        /// <typeparam name="T">Metadata value type.</typeparam>
+        /// <param name="key">Typed metadata key.</param>
+        /// <param name="value">Metadata value.</param>
+        /// <returns>The same assembly builder.</returns>
+        public BeeAssemblyBuilder WithMetadata<T>(BeeMetadataKey<T> key, T value)
+            => WithMetadata(key.Name, value);
 
         /// <summary>
         /// Adds a dynamic class to the assembly using public visibility.

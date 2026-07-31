@@ -5,5 +5,7 @@ namespace DynaBee.FluentApi.DependencyInjection
         public const string RegisterAsConcrete = "dynabee.di.registerAsConcrete";
 
         public const string InterfaceRegistrations = "dynabee.di.interfaceRegistrations";
+
+        public const string ServiceRegistrations = "dynabee.di.serviceRegistrations";
     }
 }

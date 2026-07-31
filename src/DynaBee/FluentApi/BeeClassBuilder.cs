@@ -3,6 +3,7 @@ namespace DynaBee.FluentApi
     using DynaBee;
     using DynaBee.Infrastructure;
     using DynaBee.Infrastructure.Configurators;
+    using System.Reflection;
 
     /// <summary>
     /// Fluent builder for a dynamic class.
@@ -56,6 +57,27 @@ namespace DynaBee.FluentApi
             _classConfigurator.RegisterAsConcrete(register);
             return this;
         }
+
+        /// <summary>
+        /// Sets whether this dynamic class is registered as a specific service type in DI.
+        /// </summary>
+        /// <param name="serviceType">Service type to register.</param>
+        /// <param name="registerInDi">True to register the service type; otherwise false.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder RegisterAs(Type serviceType, bool registerInDi = true)
+        {
+            _classConfigurator.RegisterAs(serviceType, registerInDi);
+            return this;
+        }
+
+        /// <summary>
+        /// Sets whether this dynamic class is registered as a specific service type in DI.
+        /// </summary>
+        /// <typeparam name="TService">Service type to register.</typeparam>
+        /// <param name="registerInDi">True to register the service type; otherwise false.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder RegisterAs<TService>(bool registerInDi = true)
+            => RegisterAs(typeof(TService), registerInDi);
 
         /// <summary>
         /// Stores metadata for this generated class.
@@ -235,6 +257,43 @@ namespace DynaBee.FluentApi
             var methodBuilder = new BeeMethodBuilder(name, returnType);
             configure?.Invoke(methodBuilder);
             _classConfigurator.AddElementBuilder(methodBuilder.ToConfigurator());
+            return this;
+        }
+
+        /// <summary>
+        /// Adds an overriding method using the signature from a virtual or abstract base method.
+        /// </summary>
+        /// <param name="baseMethod">Base method to override.</param>
+        /// <param name="configure">Method body configuration callback.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder OverrideMethod(MethodInfo baseMethod, Action<BeeMethodBuilder> configure = null)
+        {
+            if (baseMethod == null)
+                throw new ArgumentNullException(nameof(baseMethod));
+
+            var methodBuilder = new BeeMethodBuilder(baseMethod.Name, baseMethod.ReturnType)
+                .WithParameterRange(baseMethod.GetParameters().Select(x => (x.Name ?? $"arg{x.Position}", (BeeType)x.ParameterType)))
+                .Overrides(baseMethod);
+
+            configure?.Invoke(methodBuilder);
+            _classConfigurator.AddElementBuilder(methodBuilder.ToConfigurator());
+            return this;
+        }
+
+        /// <summary>
+        /// Adds an overriding property using the signature from a virtual or abstract base property.
+        /// </summary>
+        /// <param name="baseProperty">Base property to override.</param>
+        /// <param name="configure">Property override configuration callback.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder OverrideProperty(PropertyInfo baseProperty, Action<BeePropertyOverrideBuilder> configure)
+        {
+            if (baseProperty == null)
+                throw new ArgumentNullException(nameof(baseProperty));
+
+            var propertyBuilder = new BeePropertyOverrideBuilder(baseProperty);
+            configure?.Invoke(propertyBuilder);
+            _classConfigurator.AddElementBuilder(propertyBuilder.ToConfigurator());
             return this;
         }
 

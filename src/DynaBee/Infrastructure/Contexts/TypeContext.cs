@@ -33,6 +33,11 @@
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
+        public IReadOnlyDictionary<string, object> Metadata => _metadata;
+
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
         public IElementContext FindOne(string name)
         {
             var matches = _elementContexts.Where(x => string.Equals(x.Name, name, StringComparison.Ordinal)).ToArray();

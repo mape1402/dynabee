@@ -11,6 +11,7 @@ namespace DynaBee.Infrastructure.Configurators
         private readonly List<IElementConfigurator> _elementConfigurator = new();
         private readonly List<Type> _interfaces = new();
         private readonly Dictionary<Type, bool> _interfaceRegistrations = new();
+        private readonly Dictionary<Type, bool> _serviceRegistrations = new();
         private readonly List<BeeAttribute> _attributes = new();
         private readonly Dictionary<string, object> _metadata = new();
         private readonly ClassArguments _arguments = new();
@@ -58,6 +59,7 @@ namespace DynaBee.Infrastructure.Configurators
 
             typeBuilderContext.SetMetadata(BeeDiMetadataKeys.RegisterAsConcrete, _registerAsConcrete);
             typeBuilderContext.SetMetadata(BeeDiMetadataKeys.InterfaceRegistrations, new Dictionary<Type, bool>(_interfaceRegistrations));
+            typeBuilderContext.SetMetadata(BeeDiMetadataKeys.ServiceRegistrations, new Dictionary<Type, bool>(_serviceRegistrations));
 
             foreach (var elementConfigurator in _elementConfigurator)
                 elementConfigurator.Configure(typeBuilderContext);
@@ -103,6 +105,15 @@ namespace DynaBee.Infrastructure.Configurators
         public IClassConfigurator RegisterAsConcrete(bool register = true)
         {
             _registerAsConcrete = register;
+            return this;
+        }
+
+        public IClassConfigurator RegisterAs(Type serviceType, bool registerInDi = true)
+        {
+            if (serviceType == null)
+                throw new ArgumentNullException(nameof(serviceType));
+
+            _serviceRegistrations[serviceType] = registerInDi;
             return this;
         }
 

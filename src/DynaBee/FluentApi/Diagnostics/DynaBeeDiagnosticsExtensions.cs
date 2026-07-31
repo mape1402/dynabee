@@ -18,7 +18,7 @@ namespace DynaBee.FluentApi.Diagnostics
 
             var types = context
                 .Find(_ => true)
-                .Select(x => BuildTypeDiagnostic(x.ClrType))
+                .Select(BuildTypeDiagnostic)
                 .OrderBy(x => x.Name, StringComparer.Ordinal)
                 .ToArray();
 
@@ -26,6 +26,7 @@ namespace DynaBee.FluentApi.Diagnostics
             {
                 Name = context.Assembly.GetName().Name ?? context.Name,
                 Version = context.Assembly.GetName().Version?.ToString() ?? "0.0.0.0",
+                MetadataKeys = context.Metadata.Keys.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
                 Types = types
             };
         }
@@ -40,8 +41,9 @@ namespace DynaBee.FluentApi.Diagnostics
             return JsonSerializer.Serialize(model, options);
         }
 
-        private static TypeDiagnostic BuildTypeDiagnostic(Type type)
+        private static TypeDiagnostic BuildTypeDiagnostic(ITypeContext typeContext)
         {
+            var type = typeContext.ClrType;
             var members = new List<MemberDiagnostic>();
 
             var bindingFlags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
@@ -54,6 +56,7 @@ namespace DynaBee.FluentApi.Diagnostics
                     Kind = "Field",
                     Signature = $"{field.FieldType.Name} {field.Name}",
                     AccessModifier = GetFieldAccess(field),
+                    MetadataKeys = GetMemberMetadataKeys(typeContext, field.Name),
                     Attributes = field.GetCustomAttributesData().Select(a => a.AttributeType.Name).ToArray()
                 });
             }
@@ -70,6 +73,7 @@ namespace DynaBee.FluentApi.Diagnostics
                     Kind = "Property",
                     Signature = $"{property.PropertyType.Name} {property.Name} ({accessorSignature})",
                     AccessModifier = accessorSignature,
+                    MetadataKeys = GetMemberMetadataKeys(typeContext, property.Name),
                     Attributes = property.GetCustomAttributesData().Select(a => a.AttributeType.Name).ToArray()
                 });
             }
@@ -83,6 +87,7 @@ namespace DynaBee.FluentApi.Diagnostics
                     Kind = "Method",
                     Signature = $"{method.ReturnType.Name} {method.Name}({parameters})",
                     AccessModifier = GetMethodAccess(method),
+                    MetadataKeys = GetMemberMetadataKeys(typeContext, method.Name),
                     Attributes = method.GetCustomAttributesData().Select(a => a.AttributeType.Name).ToArray()
                 });
             }
@@ -93,9 +98,20 @@ namespace DynaBee.FluentApi.Diagnostics
                 FullName = type.FullName ?? type.Name,
                 Kind = GetTypeKind(type),
                 AccessModifier = GetTypeAccess(type),
+                BaseType = type.BaseType?.FullName,
+                Interfaces = type.GetInterfaces().Select(x => x.FullName ?? x.Name).OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+                MetadataKeys = typeContext.Metadata.Keys.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
                 Attributes = type.GetCustomAttributesData().Select(a => a.AttributeType.Name).ToArray(),
                 Members = members.OrderBy(x => x.Name, StringComparer.Ordinal).ToArray()
             };
+        }
+
+        private static IReadOnlyCollection<string> GetMemberMetadataKeys(ITypeContext typeContext, string memberName)
+        {
+            var matches = typeContext.Find(x => string.Equals(x.Name, memberName, StringComparison.Ordinal)).ToArray();
+            return matches.Length == 1
+                ? matches[0].Metadata.Keys.OrderBy(x => x, StringComparer.Ordinal).ToArray()
+                : Array.Empty<string>();
         }
 
         private static string GetTypeKind(Type type)

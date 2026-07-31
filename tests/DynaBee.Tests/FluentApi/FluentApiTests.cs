@@ -10,6 +10,7 @@ namespace DynaBee.Tests.FluentApi
     using global::DynaBee.FluentApi.Body;
     using global::DynaBee.FluentApi.DependencyInjection;
     using global::DynaBee.FluentApi.Diagnostics;
+    using global::DynaBee.FluentApi.Generation;
     using global::DynaBee.FluentApi.Invocation;
     using global::DynaBee.Infrastructure;
     using Xunit;
@@ -387,6 +388,75 @@ namespace DynaBee.Tests.FluentApi
         }
 
         [Fact]
+        public void Assembly_Metadata_Can_Be_Attached_And_Read_After_Build()
+        {
+            var descriptorKey = new BeeMetadataKey<string>("descriptor.key");
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.AssemblyMetadata")
+                .WithMetadata(descriptorKey, "sales-v1")
+                .AddClass("Empty", _ => { })
+                .Build();
+
+            Assert.True(context.TryGetMetadata(descriptorKey, out var value));
+            Assert.Equal("sales-v1", value);
+        }
+
+        [Fact]
+        public void Constructor_Can_Forward_Arguments_To_Protected_Base_Constructor()
+        {
+            var baseConstructor = typeof(GeneratedHandlerBase)
+                .GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(IServiceProvider) }, null)!;
+            var executeMethod = typeof(GeneratedHandlerBase).GetMethod(nameof(GeneratedHandlerBase.Execute))!;
+
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.BaseConstructorForwarding")
+                .AddClass("GeneratedHandler", c => c
+                    .Inherits<GeneratedHandlerBase>()
+                    .AddConstructor(ctor => ctor
+                        .WithParameter<IServiceProvider>("serviceProvider")
+                        .CallsBase(baseConstructor, args => args.Argument("serviceProvider")))
+                    .OverrideMethod(executeMethod, method => method
+                        .EmitsBody(body =>
+                        {
+                            var formatMethod = typeof(NameFormatter).GetMethod(nameof(NameFormatter.Format))!;
+
+                            body.Return(body.Call(
+                                body.Property(body.Self(), "Formatter"),
+                                formatMethod,
+                                body.Parameter<string>("name")));
+                        })))
+                .Build();
+
+            var services = new ServiceCollection()
+                .AddSingleton<NameFormatter>()
+                .BuildServiceProvider();
+            var instance = (GeneratedHandlerBase)Activator.CreateInstance(context.GetClrType("GeneratedHandler"), services)!;
+
+            Assert.Equal("Formatted: Ada", instance.Execute("Ada"));
+        }
+
+        [Fact]
+        public void OverrideProperty_Can_Return_Constant_For_Virtual_Property()
+        {
+            var property = typeof(GeneratedQueryBase).GetProperty(nameof(GeneratedQueryBase.Name))!;
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.PropertyOverride")
+                .AddClass("GeneratedQuery", c => c
+                    .Inherits<GeneratedQueryBase>()
+                    .OverrideProperty(property, p => p
+                        .WithMetadata("descriptor.member", "query-name")
+                        .Getter(get => get.ReturnsConstant("Orders"))))
+                .Build();
+
+            var instance = (GeneratedQueryBase)Activator.CreateInstance(context.GetClrType("GeneratedQuery"))!;
+            var propertyContext = context.Find("GeneratedQuery").FindOne("Name");
+
+            Assert.Equal("Orders", instance.Name);
+            Assert.True(propertyContext.TryGetMetadata("descriptor.member", out var metadata));
+            Assert.Equal("query-name", metadata);
+        }
+
+        [Fact]
         public void AddDynaBee_Registers_Generated_Types_In_DI()
         {
             var context = DynaBeeBuilder
@@ -464,6 +534,103 @@ namespace DynaBee.Tests.FluentApi
             Assert.Contains(typeof(IHasUnitOfWork), implementationType.GetInterfaces());
             Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IHasUnitOfWork>());
             Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService(implementationType));
+        }
+
+        [Fact]
+        public void AddDynaBee_Can_Register_Generated_Type_As_Base_Service()
+        {
+            var executeMethod = typeof(GeneratedHandlerBase).GetMethod(nameof(GeneratedHandlerBase.Execute))!;
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.DI.BaseService")
+                .AddClass("GeneratedHandler", c => c
+                    .Inherits<GeneratedHandlerBase>()
+                    .RegisterAsConcrete(false)
+                    .RegisterAs<GeneratedHandlerBase>()
+                    .AddConstructor(ctor => ctor
+                        .WithParameter<IServiceProvider>("serviceProvider")
+                        .CallsBase(
+                            typeof(GeneratedHandlerBase).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(IServiceProvider) }, null)!,
+                            "serviceProvider"))
+                    .OverrideMethod(executeMethod, method => method
+                        .EmitsBody(body => body.Return(body.Constant("ok")))))
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddSingleton<NameFormatter>();
+            services.AddDynaBee(context, ServiceLifetime.Scoped);
+
+            var provider = services.BuildServiceProvider();
+            var handler = provider.GetRequiredService<GeneratedHandlerBase>();
+            var implementationType = context.GetClrType("GeneratedHandler");
+
+            Assert.Equal("ok", handler.Execute("ignored"));
+            Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService(implementationType));
+        }
+
+        [Fact]
+        public void AddDynaBee_Can_Use_Registration_Options_For_Base_Service()
+        {
+            var executeMethod = typeof(GeneratedHandlerBase).GetMethod(nameof(GeneratedHandlerBase.Execute))!;
+            var context = DynaBeeBuilder
+                .CreateAssembly("Dynabee.Fluent.Tests.DI.Options")
+                .AddClass("GeneratedHandler", c => c
+                    .Inherits<GeneratedHandlerBase>()
+                    .AddConstructor(ctor => ctor
+                        .WithParameter<IServiceProvider>("serviceProvider")
+                        .CallsBase(
+                            typeof(GeneratedHandlerBase).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(IServiceProvider) }, null)!,
+                            "serviceProvider"))
+                    .OverrideMethod(executeMethod, method => method
+                        .EmitsBody(body => body.Return(body.Constant("from-options")))))
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddSingleton<NameFormatter>();
+            services.AddDynaBee(context, options => options
+                .Register(type => type
+                    .ForType("GeneratedHandler")
+                    .As<GeneratedHandlerBase>()
+                    .WithLifetime(ServiceLifetime.Transient)
+                    .SkipConcrete()));
+
+            var provider = services.BuildServiceProvider();
+            var handler = provider.GetRequiredService<GeneratedHandlerBase>();
+
+            Assert.Equal("from-options", handler.Execute("ignored"));
+            Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService(context.GetClrType("GeneratedHandler")));
+        }
+
+        [Fact]
+        public void GenerationPlan_Can_Be_Inspected_And_Applied_Through_Registry()
+        {
+            var executeMethod = typeof(GeneratedHandlerBase).GetMethod(nameof(GeneratedHandlerBase.Execute))!;
+            var plan = new DynaBeeGenerationPlan("Dynabee.Fluent.Tests.GenerationPlan")
+                .WithMetadata("descriptor.batch", "batch-42")
+                .AddClass("GeneratedHandler", type => type
+                    .Inherits(typeof(GeneratedHandlerBase))
+                    .RegisterAs(typeof(GeneratedHandlerBase))
+                    .WithMetadata("descriptor.key", "handler-42")
+                    .AddConstructor(ctor => ctor
+                        .WithParameter<IServiceProvider>("serviceProvider")
+                        .CallsBase(
+                            typeof(GeneratedHandlerBase).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(IServiceProvider) }, null)!,
+                            "serviceProvider"))
+                    .OverrideMethod(executeMethod, method => method
+                        .EmitsBody(body => body.Return(body.Constant("planned")))));
+
+            Assert.Equal("Dynabee.Fluent.Tests.GenerationPlan", plan.AssemblyName);
+            Assert.Single(plan.Classes);
+            Assert.Equal(typeof(GeneratedHandlerBase), plan.Classes[0].BaseType);
+            Assert.Contains(plan.Classes[0].Members, member => member.Name == nameof(GeneratedHandlerBase.Execute));
+
+            var registry = new AssemblyContextRegistry(plan.AssemblyName);
+            registry.Configure(builder => plan.ApplyTo(builder));
+            var context = registry.BuildSnapshot();
+
+            Assert.True(context.TryGetMetadata("descriptor.batch", out var batch));
+            Assert.Equal("batch-42", batch);
+            Assert.True(context.Find("GeneratedHandler").TryGetMetadata("descriptor.key", out var descriptor));
+            Assert.Equal("handler-42", descriptor);
         }
 
         [Fact]
@@ -2020,6 +2187,23 @@ namespace DynaBee.Tests.FluentApi
 
             public string FormatCount(int count)
                 => $"Count: {count}";
+        }
+
+        public abstract class GeneratedHandlerBase
+        {
+            protected GeneratedHandlerBase(IServiceProvider serviceProvider)
+            {
+                Formatter = serviceProvider.GetRequiredService<NameFormatter>();
+            }
+
+            protected NameFormatter Formatter { get; }
+
+            public abstract string Execute(string name);
+        }
+
+        public abstract class GeneratedQueryBase
+        {
+            public virtual string Name => "Base";
         }
 
         public interface IItemMapper

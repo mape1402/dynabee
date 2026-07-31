@@ -3,6 +3,7 @@ namespace DynaBee.FluentApi
     using DynaBee.FluentApi.Body;
     using DynaBee.Infrastructure;
     using System.Linq.Expressions;
+    using System.Reflection;
     using System.Reflection.Emit;
     using DynaBee.Infrastructure.Configurators;
 
@@ -20,6 +21,7 @@ namespace DynaBee.FluentApi
         private LambdaExpression _expressionBody;
         private bool _isStatic;
         private MethodAccessModifier _accessModifier;
+        private MethodInfo _overrideMethod;
 
         internal BeeMethodBuilder(string name, BeeType returnType)
         {
@@ -70,6 +72,21 @@ namespace DynaBee.FluentApi
         public BeeMethodBuilder WithAccess(MethodAccessModifier accessModifier)
         {
             _accessModifier = accessModifier;
+            return this;
+        }
+
+        internal BeeMethodBuilder WithParameterRange(IEnumerable<(string Name, BeeType Type)> parameters)
+        {
+            if (parameters == null)
+                throw new ArgumentNullException(nameof(parameters));
+
+            _parameters.AddRange(parameters);
+            return this;
+        }
+
+        internal BeeMethodBuilder Overrides(MethodInfo baseMethod)
+        {
+            _overrideMethod = baseMethod ?? throw new ArgumentNullException(nameof(baseMethod));
             return this;
         }
 
@@ -228,6 +245,6 @@ namespace DynaBee.FluentApi
             => WithMetadata(key.Name, value);
 
         internal MethodConfigurator ToConfigurator()
-            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _methodBody, _lambdaBody, _expressionBody, _isStatic, _accessModifier, _attributes, _metadata);
+            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _methodBody, _lambdaBody, _expressionBody, _isStatic, _accessModifier, _attributes, _metadata, _overrideMethod);
     }
 }
