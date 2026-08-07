@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.0] - 2026-08-07
+
+### Added
+- Added the `DynaBee.Testing` package for testing generated assemblies, generated types, diagnostics, dependency injection registration, and generated source snapshots.
+- Added `IDynaBeeTestGenerator` and `DynaBeeTestGenerator` for in-memory test assembly generation.
+- Added `DynaBeeTestSpecification` for fluent test generation inputs, including direct builder callbacks and `DynaBeeGenerationPlan` support.
+- Added `DynaBeeTestGenerationResult` with diagnostics and `WriteGeneratedSourcesTo(...)` snapshot output.
+- Added generated assembly DI registration through `services.AddGeneratedAssembly(...)`.
+- Added generated assembly/type assertion helpers such as `ShouldBeEmpty()`, `ShouldContainType(...)`, `ShouldImplement(...)`, `ShouldInheritFrom(...)`, `ShouldHaveConstructor(...)`, and `ShouldHaveGenericArguments(...)`.
+- Added tests covering DynaBee testing generation, DI registration, diagnostics, and source snapshot output.
+
 ## [v1.3.0] - 2026-07-31
 
 ### Added
@@ -153,3 +164,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated README with installation, requirements, getting started examples, real-world use cases, and benchmark results.
 - Improved XML documentation coverage for public Fluent API and diagnostics components.
+

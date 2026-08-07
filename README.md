@@ -29,6 +29,12 @@ The recommended application model is DI-first: define `DynaBeeProfile` classes, 
 dotnet add package DynaBee
 ```
 
+For test projects that validate generated assemblies:
+
+```bash
+dotnet add package DynaBee.Testing
+```
+
 ## Getting Started
 
 ### 1) Define a profile
@@ -663,6 +669,51 @@ var invoker = context.CreateBoundMethodInvoker(
 var result = invoker.Invoke(new object[] { order, customer, mapContext });
 ```
 
+
+### 10) Testing generated assemblies
+
+`DynaBee.Testing` provides a small testing layer for generated assemblies,
+generated types, diagnostics, dependency injection registration, and source
+snapshots. It does not depend on any application framework-specific package.
+
+```csharp
+using DynaBee.Testing;
+using DynaBee.Testing.Assertions;
+using DynaBee.Testing.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+using System.Linq.Expressions;
+
+var services = new ServiceCollection()
+    .AddDynaBeeTesting();
+
+var provider = services.BuildServiceProvider();
+var dynabeeTest = provider.GetRequiredService<IDynaBeeTestGenerator>();
+
+var specification = DynaBeeTestSpecification.Create("Demo.Tests", builder => builder
+    .AddClass("CreateCustomerCommandHandler", type => type
+        .Implements<IRequestHandler<CreateCustomerCommand, CustomerCreated>>()
+        .AddMethod("Handle", typeof(CustomerCreated), method => method
+            .WithParameter<CreateCustomerCommand>("request")
+            .EmitsExpression(
+                (Expression<Func<CreateCustomerCommand, CustomerCreated>>)
+                (request => new CustomerCreated())))));
+
+var result = await dynabeeTest.GenerateAssemblyAsync(specification);
+var assembly = result.Assembly;
+
+result.Diagnostics.ShouldBeEmpty();
+var generatedType = assembly.ShouldContainType("CreateCustomerCommandHandler");
+generatedType.ShouldImplement(typeof(IRequestHandler<,>));
+
+services.AddGeneratedAssembly(assembly);
+
+result.WriteGeneratedSourcesTo("./snapshots/generated");
+```
+
+Useful assertions include generated assembly existence, generated type existence,
+constructor shape, implemented interfaces, inherited base types, generic
+arguments, diagnostics, and source snapshot output.
+
 ## Real-World Use Cases
 
 ### 1) Plugin systems
@@ -717,3 +768,4 @@ Notes:
 
 - `BuildClass_NoCache` and `BuildClass_FromCache` were executed with `ShortRun`.
 - Cache dramatically reduces repeated build cost.
+
