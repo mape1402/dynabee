@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DynaBee\DynaBee.csproj" />
+    <ProjectReference Include="..\..\src\DynaBee.Testing\DynaBee.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>
