@@ -85,6 +85,59 @@ public sealed class InvokerExpansionCoverageTests
         Assert.Throws<ArgumentNullException>(() => context.CreateObjectAdapter3("Dispatch", instance, "Sum", null!));
     }
 
+    [Fact]
+    public void Delegate_Factories_Validate_Generated_Constructor_And_Method_Identity_Inputs()
+    {
+        var context = new BeeAssemblyBuilder($"DynaBee.Tests.InvokerConstructors.{Guid.NewGuid():N}")
+            .AddClass("Dispatch", type => type
+                .AddMethod("Echo", typeof(string), method => method
+                    .WithParameter<string>("value")
+                    .EmitsBody(body => body.Return(body.Parameter<string>("value")))))
+            .AddClass("WithArgument", type => type
+                .AddConstructor(constructor => constructor.WithParameter<string>("value")))
+            .Build();
+        var instance = context.CreateInstance("Dispatch");
+
+        var factory = context.CreateFactoryDelegate<Func<string, object>>("WithArgument", new[] { typeof(string) });
+
+        Assert.Equal(context.GetClrType("WithArgument"), factory("value").GetType());
+        Assert.Contains("parameters do not match", Assert.Throws<InvalidOperationException>(() =>
+            context.CreateFactoryDelegate<Func<object>>("WithArgument", new[] { typeof(string) })).Message);
+        Assert.Throws<ArgumentException>(() => context.CreateBoundDelegate<Func<string, string>>("", instance, "Echo", new[] { typeof(string) }));
+        Assert.Throws<ArgumentException>(() => context.CreateBoundDelegate<Func<string, string>>("Dispatch", instance, "", new[] { typeof(string) }));
+        Assert.Throws<ArgumentNullException>(() => context.CreateBoundDelegate<Func<string, string>>("Dispatch", instance, "Echo", null!));
+        Assert.Contains("cannot be null", Assert.Throws<InvalidOperationException>(() =>
+            context.CreateBoundDelegate<Func<string, string>>("Dispatch", null!, "Echo", new[] { typeof(string) })).Message);
+        Assert.Contains("not assignable", Assert.Throws<InvalidOperationException>(() =>
+            context.CreateBoundDelegate<Func<string, string>>("Dispatch", new object(), "Echo", new[] { typeof(string) })).Message);
+    }
+
+    [Fact]
+    public void Descriptors_And_Object_Adapters_Protect_Their_Public_Contracts()
+    {
+        var parameterTypes = new List<Type> { typeof(string) };
+        var descriptor = new DynaBeeGeneratedMethodDescriptor(typeof(string), "Format", parameterTypes, typeof(string));
+        var adapter = new DynaBeeObjectMethodAdapter(
+            "Coverage",
+            "Adapter",
+            "Echo",
+            new[] { typeof(string) },
+            typeof(string),
+            arguments => arguments[0]?.ToString() ?? "none");
+
+        parameterTypes[0] = typeof(int);
+
+        Assert.Equal(typeof(string), descriptor.DeclaringType);
+        Assert.Equal("Format", descriptor.Name);
+        Assert.Equal(new[] { typeof(string) }, descriptor.ParameterTypes);
+        Assert.Equal(typeof(string), descriptor.ReturnType);
+        Assert.Equal("none", adapter.Invoke(new object[] { null! }));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGeneratedMethodDescriptor(null!, "Format", Type.EmptyTypes, typeof(string)));
+        Assert.Throws<ArgumentException>(() => new DynaBeeGeneratedMethodDescriptor(typeof(string), "", Type.EmptyTypes, typeof(string)));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGeneratedMethodDescriptor(typeof(string), "Format", null!, typeof(string)));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGeneratedMethodDescriptor(typeof(string), "Format", Type.EmptyTypes, null!));
+    }
+
     private static IAssemblyContext CreateContext()
         => new BeeAssemblyBuilder($"DynaBee.Tests.InvokerExpansion.{Guid.NewGuid():N}")
             .AddClass("Dispatch", type => type
