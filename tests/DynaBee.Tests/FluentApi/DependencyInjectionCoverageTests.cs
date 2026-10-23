@@ -276,6 +276,30 @@ public sealed class DependencyInjectionCoverageTests
     }
 
     [Fact]
+    public void Profile_And_Registration_Policies_Handle_Implicit_Discovery_And_NonBoolean_Metadata()
+    {
+        var assemblyName = CoverageProfile.DefaultAssemblyName;
+        var profile = new CoverageProfile(assemblyName);
+        var implementation = typeof(CoverageImplementation);
+        var malformedMetadata = new TypeContext(
+            "Service",
+            implementation,
+            Array.Empty<IElementContext>(),
+            new Dictionary<string, object> { [BeeDiMetadataKeys.RegisterAsConcrete] = "true" });
+        var rule = new DynaBeeGeneratedTypeRegistrationBuilder()
+            .Where(_ => true)
+            .Where(type => type.Name == "Service")
+            .Build();
+        var services = new ServiceCollection().AddDynaBeeProfiles();
+
+        Assert.Throws<ArgumentException>(() => new CoverageProfile(" "));
+        Assert.True(InvokeDiPolicy<bool>("ResolveRegisterConcreteType", malformedMetadata, Array.Empty<DynaBeeGeneratedTypeRegistrationRule>()));
+        Assert.True(rule.Predicate(malformedMetadata));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IDynaBeeAssemblyCatalog));
+        Assert.Equal(assemblyName, profile.AssemblyName);
+    }
+
+    [Fact]
     public void Dependency_Infrastructure_Rejects_Invalid_Constructors_And_Keeps_Stable_Snapshots()
     {
         var registry = new AssemblyContextRegistry(NewAssemblyName());
