@@ -76,12 +76,16 @@ public static class DynaBeeGeneratedAssemblyAssertions
 
         try
         {
-            return assembly.Find(typeName);
+            var typeContext = assembly.Find(typeName);
+            if (typeContext != null)
+                return typeContext;
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException($"Expected generated assembly '{assembly.Name}' to contain type '{typeName}'.", ex);
         }
+
+        throw new InvalidOperationException($"Expected generated assembly '{assembly.Name}' to contain type '{typeName}'.");
     }
 }
 
