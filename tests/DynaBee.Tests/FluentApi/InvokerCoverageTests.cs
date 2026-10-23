@@ -205,6 +205,39 @@ public sealed class InvokerCoverageTests
         Assert.True(dispatch.IsInstanceOfType(instance));
     }
 
+    [Fact]
+    public void Invocation_Adapters_Support_Multiple_Arguments_List_Inputs_And_Null_Value_Errors()
+    {
+        var context = CreateContext();
+        var instance = context.CreateInstance("Dispatch");
+
+        var twoArguments = context.CreateObjectAdapter2(
+            "Dispatch", instance, "Add", new[] { typeof(int), typeof(int) });
+        var threeArguments = context.CreateObjectAdapter3(
+            "Dispatch", instance, "Sum", new[] { typeof(int), typeof(int), typeof(int) });
+        var listAdapter = context.CreateArgumentListAdapter(
+            "Dispatch", instance, "Add", new[] { typeof(int), typeof(int) });
+        var bound = context.CreateBoundMethodInvoker(
+            "Dispatch", instance, "Add", new[] { typeof(int), typeof(int) });
+        var increment = context.CreateObjectAdapter(
+            "Dispatch", instance, "Increment", new[] { typeof(int) });
+
+        Assert.Equal(5, twoArguments(2, 3));
+        Assert.Equal(6, threeArguments(1, 2, 3));
+        Assert.Equal(9, listAdapter.Invoke(new List<object> { 4, 5 }));
+        Assert.Equal(13, bound.Invoke(new List<object> { 6, 7 }));
+        Assert.Contains("received '<null>'", Assert.Throws<InvalidOperationException>(() => increment(null!)).Message);
+        Assert.Contains("received '<null>'", Assert.Throws<InvalidOperationException>(() =>
+            context.CreateMethodInvoker("Dispatch", "Add", new[] { typeof(int), typeof(int) })
+                .Invoke(instance, new List<object> { null!, 1 })).Message);
+
+        var failingAdapter = new DynaBeeObjectMethodAdapter(
+            "Coverage", "Dispatch", "Increment", new[] { typeof(int) }, typeof(int),
+            _ => throw new InvalidCastException("invalid"));
+        Assert.Contains("received '<null>'", Assert.Throws<InvalidOperationException>(() =>
+            failingAdapter.Invoke(new object[] { null! })).Message);
+    }
+
     private static IAssemblyContext CreateContext()
     {
         DispatchRecorder.LastValue = null;
@@ -217,6 +250,9 @@ public sealed class InvokerCoverageTests
                     .WithParameter<int>("left")
                     .WithParameter<int>("right")
                     .EmitsBody(body => body.Return(body.Add(body.Parameter<int>("left"), body.Parameter<int>("right")))))
+                .AddMethod("Increment", typeof(int), method => method
+                    .WithParameter<int>("value")
+                    .EmitsBody(body => body.Return(body.Add(body.Parameter<int>("value"), body.Constant(1)))))
                 .AddMethod("Sum", typeof(int), method => method
                     .WithParameter<int>("first")
                     .WithParameter<int>("second")
