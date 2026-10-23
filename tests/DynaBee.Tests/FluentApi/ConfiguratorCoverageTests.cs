@@ -261,6 +261,37 @@ public sealed class ConfiguratorCoverageTests
             typeof(ConstructorBaseText)));
     }
 
+    [Fact]
+    public void Dependency_Constructors_And_Interface_Configurators_Validate_And_Emit_Their_Contracts()
+    {
+        var dependencyConfigurator = new DependencyConstructorConfigurator(
+            new[] { ("Count", typeof(int), "count"), ("Name", typeof(string), "name") });
+        var interfaceConfigurator = new InterfaceConfigurator("IConfigured", default);
+
+        Assert.Throws<ArgumentNullException>(() => new DependencyConstructorConfigurator(null!));
+        Assert.Throws<ArgumentNullException>(() => dependencyConfigurator.Configure(null!));
+        Assert.Throws<InvalidOperationException>(() => ConfigureDependencyConstructor(
+            new DependencyConstructorConfigurator(Array.Empty<(string PropertyName, Type PropertyType, string ParameterName)>()),
+            typeof(ConstructorBaseText)));
+        Assert.Throws<ArgumentNullException>(() => interfaceConfigurator.AddElementBuilder(null!));
+        Assert.Throws<ArgumentNullException>(() => interfaceConfigurator.Inherits(null!));
+        Assert.Throws<ArgumentException>(() => interfaceConfigurator.Inherits(typeof(string)));
+        Assert.Throws<ArgumentNullException>(() => interfaceConfigurator.AddAttribute(null!));
+
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddInterface("IConfigured", type => type.Inherits<IDisposable>())
+            .AddClass("Injected", type => type
+                .Inject<int>("Count", "count")
+                .Inject<string>("Name", "name"))
+            .Build();
+        var injected = context.GetClrType("Injected");
+        var instance = Activator.CreateInstance(injected, 9, "configured")!;
+
+        Assert.True(context.GetClrType("IConfigured").IsInterface);
+        Assert.Equal(9, injected.GetProperty("Count")!.GetValue(instance));
+        Assert.Equal("configured", injected.GetProperty("Name")!.GetValue(instance));
+    }
+
     private static void BuildInvalid(Action<BeeClassBuilder> configure)
         => new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("Invalid", type =>
@@ -312,6 +343,18 @@ public sealed class ConfiguratorCoverageTests
         var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(NewAssemblyName()), AssemblyBuilderAccess.Run);
         var module = assembly.DefineDynamicModule("Constructors");
         var assemblyContext = new AssemblyContextBuilder("Constructors", assembly, module);
+        var type = module.DefineType("Generated", TypeAttributes.Public, baseType);
+        var typeContext = (TypeContextBuilder)assemblyContext.AddTypeBuilder("Generated", type);
+
+        configurator.Configure(typeContext);
+        typeContext.Build();
+    }
+
+    private static void ConfigureDependencyConstructor(DependencyConstructorConfigurator configurator, Type baseType)
+    {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(NewAssemblyName()), AssemblyBuilderAccess.Run);
+        var module = assembly.DefineDynamicModule("Dependencies");
+        var assemblyContext = new AssemblyContextBuilder("Dependencies", assembly, module);
         var type = module.DefineType("Generated", TypeAttributes.Public, baseType);
         var typeContext = (TypeContextBuilder)assemblyContext.AddTypeBuilder("Generated", type);
 

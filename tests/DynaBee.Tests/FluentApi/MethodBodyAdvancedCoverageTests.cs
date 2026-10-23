@@ -289,6 +289,47 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.Equal(typeof(string), body.Coalesce(body.Parameter<string>("value"), body.Constant(10)).Type);
     }
 
+    [Fact]
+    public void GeneratedBodies_Use_Foreach_Break_And_Null_Base_Call_Arguments()
+    {
+        var baseMethod = typeof(BaseCallTarget).GetMethod(nameof(BaseCallTarget.GetValue))!;
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("ControlFlow", type => type
+                .AddMethod("FirstOrZero", typeof(int), method => method
+                    .WithParameter<IEnumerable<int>>("values")
+                    .EmitsBody(body =>
+                    {
+                        var result = body.DeclareLocal<int>("result");
+                        body.Assign(result, body.Constant(0));
+                        body.ForEach(body.Parameter<IEnumerable<int>>("values"), "item", (item, loop) =>
+                        {
+                            loop.Assign(result, item);
+                            loop.Break();
+                        });
+                        body.Return(result);
+                    })))
+            .AddClass("Derived", type => type
+                .Inherits<BaseCallTarget>()
+                .OverrideMethod(baseMethod, method => method.EmitsBody(body => body.Return(body.CallBase(null!)))))
+            .Build();
+
+        var controlFlow = context.CreateInstance("ControlFlow");
+
+        Assert.Equal(0, controlFlow.GetType().GetMethod("FirstOrZero")!.Invoke(controlFlow, new object[] { Array.Empty<int>() }));
+        Assert.Equal(4, controlFlow.GetType().GetMethod("FirstOrZero")!.Invoke(controlFlow, new object[] { new[] { 4, 5 } }));
+        Assert.Equal(6, ((BaseCallTarget)context.CreateInstance("Derived")).GetValue());
+    }
+
+    [Fact]
+    public void MethodBodyBuilder_Requires_An_Il_Generator_And_Return_Type()
+    {
+        var il = new DynamicMethod("Coverage", typeof(void), Type.EmptyTypes).GetILGenerator();
+        var parameters = Array.Empty<(string Name, Type Type, int ArgumentIndex)>();
+
+        Assert.Throws<ArgumentNullException>(() => new BeeMethodBodyBuilder(null!, typeof(void), parameters));
+        Assert.Throws<ArgumentNullException>(() => new BeeMethodBodyBuilder(il, null!, parameters));
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");
@@ -350,6 +391,12 @@ public sealed class MethodBodyAdvancedCoverageTests
     public abstract class AbstractBase
     {
         public abstract int Value();
+    }
+
+    public class BaseCallTarget
+    {
+        public virtual int GetValue()
+            => 6;
     }
 
     public sealed class AmbiguousIndexer : AmbiguousIndexerBase

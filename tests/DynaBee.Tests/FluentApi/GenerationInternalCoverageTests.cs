@@ -71,6 +71,29 @@ public sealed class GenerationInternalCoverageTests
         Assert.Contains("System.Int32", (string)InvokePlanPrivate("FormatValue", 5));
     }
 
+    [Fact]
+    public void GenerationPlan_Fingerprint_Handles_Nullable_Declarative_Model_Parts_Deterministically()
+    {
+        var plan = new DynaBeeGenerationPlan("DynaBee.Tests.NullableFingerprint");
+        var classPlan = CreatePlan(
+            "NullableShape",
+            null!,
+            new Type[] { null!, typeof(IDisposable) },
+            new[] { new DynaBeeGeneratedMemberPlan("Map", ElementType.Method, typeof(string), new Type[] { null!, typeof(int) }) },
+            new Type[] { null! });
+        var classes = (IList<DynaBeeGeneratedClassPlan>)typeof(DynaBeeGenerationPlan)
+            .GetField("_classes", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(plan)!;
+
+        classes.Add(classPlan);
+
+        var first = plan.GetFingerprint();
+        var second = plan.GetFingerprint();
+
+        Assert.Equal(64, first.Length);
+        Assert.Equal(first, second);
+    }
+
     private static DynaBeeGeneratedClassPlan CreatePlan(
         string name,
         Type baseType,

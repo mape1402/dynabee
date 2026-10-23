@@ -173,9 +173,11 @@ public sealed class FluentSurfaceAndContextCoverageTests
     public void FluentBuilders_Configure_Untyped_Properties_Indexers_And_Property_Overrides()
     {
         var baseProperty = typeof(AttributedOverrideBase).GetProperty(nameof(AttributedOverrideBase.Value))!;
+        var overrideRank = new BeeMetadataKey<int>("override.rank");
         var context = new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("Configured", type => type
                 .AddAutoProperty("Untyped", (BeeType)typeof(int))
+                .AddAutoProperty<Guid>("GenericProperty", BeeAttribute.Of<ObsoleteAttribute>("generic"))
                 .AddProperty("ConfiguredProperty", (BeeType)typeof(string), property => property
                     .AddAttribute(BeeAttribute.Of<ObsoleteAttribute>("property"))
                     .AddAttribute<CLSCompliantAttribute>(attribute => attribute
@@ -187,6 +189,7 @@ public sealed class FluentSurfaceAndContextCoverageTests
                 .OverrideProperty(baseProperty, property => property
                     .AddAttribute(BeeAttribute.Of<ObsoleteAttribute>("override"))
                     .WithMetadata("source", "override")
+                    .WithMetadata(overrideRank, 3)
                     .Getter(getter => getter.ReturnsConstant(7))))
             .Build();
 
@@ -199,10 +202,12 @@ public sealed class FluentSurfaceAndContextCoverageTests
         Assert.Equal(2, configured.GetProperty("Untyped")!.GetValue(instance));
         Assert.Equal(3.5m, configured.GetProperty("Item")!.GetValue(instance, new object[] { index }));
         Assert.Equal("property", configured.GetProperty("ConfiguredProperty")!.GetCustomAttribute<ObsoleteAttribute>()!.Message);
+        Assert.Equal("generic", configured.GetProperty("GenericProperty")!.GetCustomAttribute<ObsoleteAttribute>()!.Message);
         Assert.Equal("fluent", context.Find("Configured").FindOne("ConfiguredProperty").GetMetadata("source"));
         Assert.Equal(7, ((AttributedOverrideBase)context.CreateInstance("Override")).Value);
         Assert.Equal("override", context.GetClrType("Override").GetProperty(nameof(AttributedOverrideBase.Value))!.GetCustomAttribute<ObsoleteAttribute>()!.Message);
         Assert.Equal("override", context.Find("Override").FindOne(nameof(AttributedOverrideBase.Value)).GetMetadata("source"));
+        Assert.Equal(3, context.Find("Override").FindOne(nameof(AttributedOverrideBase.Value)).GetMetadata(overrideRank.Name));
     }
 
     [Fact]

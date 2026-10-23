@@ -417,6 +417,42 @@ public sealed class BodyAndExpressionCoverageTests
         Assert.Throws<InvalidOperationException>(() => body.Return(body.Constant(1)));
     }
 
+    [Fact]
+    public void Il_Conversions_Support_Nullables_Enums_Boxing_Text_And_Numeric_Targets()
+    {
+        Assert.False(BeeIlConversions.CanConvert(typeof(void), typeof(int)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int), typeof(int)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(string), typeof(object)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int), typeof(int?)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int?), typeof(long)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int?), typeof(long?)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(ConversionState), typeof(int)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int), typeof(ConversionState)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(object), typeof(int)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int), typeof(string)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(string), typeof(Stream)));
+        Assert.False(BeeIlConversions.CanConvert(typeof(int), typeof(Stream)));
+        Assert.False(BeeIlConversions.CanConvert(typeof(DateTime), typeof(int)));
+
+        Assert.Equal(5L, CreateConversion<int, long>()(5));
+        Assert.Equal(5, CreateConversion<long, int>()(5L));
+        Assert.Equal(5f, CreateConversion<int, float>()(5));
+        Assert.Equal(5d, CreateConversion<int, double>()(5));
+        Assert.Equal((short)5, CreateConversion<int, short>()(5));
+        Assert.Equal((byte)5, CreateConversion<int, byte>()(5));
+        Assert.False(CreateConversion<int, bool>()(0));
+        Assert.True(CreateConversion<int, bool>()(3));
+        Assert.Equal(7, CreateConversion<object, int>()(7));
+        Assert.Equal("8", CreateConversion<int, string>()(8));
+        Assert.Equal(2, CreateConversion<ConversionState, int>()(ConversionState.Ready));
+        Assert.Equal(ConversionState.Ready, CreateConversion<int, ConversionState>()(2));
+        Assert.Equal(3m, CreateConversion<short, decimal>()(3));
+
+        var nullableToNullable = CreateConversion<int?, long?>();
+        Assert.Null(nullableToNullable(null));
+        Assert.Equal(9L, nullableToNullable(9));
+    }
+
     private static void SumWithForEach(IBeeMethodBodyBuilder body, IBeeValueExpression items)
     {
         var sum = body.DeclareLocal<int>("sum");
@@ -427,6 +463,21 @@ public sealed class BodyAndExpressionCoverageTests
 
     private static BeeMethodBodyBuilder CreateBody(params (string Name, Type Type, int ArgumentIndex)[] parameters)
         => new(new DynamicMethod("Coverage", typeof(void), parameters.Select(x => x.Type).ToArray()).GetILGenerator(), typeof(void), parameters);
+
+    private static Func<TSource, TTarget> CreateConversion<TSource, TTarget>()
+    {
+        var method = new DynamicMethod(
+            "Convert",
+            typeof(TTarget),
+            new[] { typeof(TSource) },
+            typeof(BodyAndExpressionCoverageTests).Module,
+            skipVisibility: true);
+        var il = method.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0);
+        BeeIlConversions.EmitConvert(typeof(TSource), typeof(TTarget), il);
+        il.Emit(OpCodes.Ret);
+        return (Func<TSource, TTarget>)method.CreateDelegate(typeof(Func<TSource, TTarget>));
+    }
 
     private static string NewAssemblyName()
         => $"DynaBee.Tests.BodyCoverage.{Guid.NewGuid():N}";
@@ -475,5 +526,11 @@ public sealed class BodyAndExpressionCoverageTests
         public int Field;
 
         public int Value { get; set; }
+    }
+
+    private enum ConversionState
+    {
+        Unknown = 0,
+        Ready = 2,
     }
 }
