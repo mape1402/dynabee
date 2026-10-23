@@ -315,20 +315,30 @@ public sealed class MethodBodyAdvancedCoverageTests
     public void MethodBodyBuilder_Handles_Null_Params_And_Rejects_Value_Returns_From_Finally()
     {
         var body = CreateBody(("text", typeof(string), 0));
+        var emptyArguments = Array.Empty<IBeeValueExpression>();
         var valueReturn = new BeeMethodBodyBuilder(
             new DynamicMethod("FinallyReturn", typeof(int), Type.EmptyTypes).GetILGenerator(),
             typeof(int),
             Array.Empty<(string Name, Type Type, int ArgumentIndex)>());
 
         Assert.Equal(typeof(RefProbe), body.New(typeof(RefProbe), (IBeeValueExpression[])null!).Type);
+        Assert.Equal(typeof(RefProbe), body.New(typeof(RefProbe), emptyArguments).Type);
         Assert.Equal(typeof(string), body.Call(
             body.Parameter<string>("text"),
             typeof(string).GetMethod(nameof(string.ToString), Type.EmptyTypes)!,
             (IBeeValueExpression[])null!).Type);
+        Assert.Equal(typeof(string), body.Call(
+            body.Parameter<string>("text"),
+            typeof(string).GetMethod(nameof(string.ToString), Type.EmptyTypes)!,
+            emptyArguments).Type);
         Assert.Equal(typeof(Guid), body.StaticCall(
             typeof(Guid).GetMethod(nameof(Guid.NewGuid), Type.EmptyTypes)!,
             (IBeeValueExpression[])null!).Type);
+        Assert.Equal(typeof(Guid), body.StaticCall(
+            typeof(Guid).GetMethod(nameof(Guid.NewGuid), Type.EmptyTypes)!,
+            emptyArguments).Type);
         Assert.Equal(typeof(string), body.Concat((IBeeValueExpression[])null!).Type);
+        Assert.Equal(typeof(string), body.Concat(body.Constant("only")).Type);
         Assert.Throws<NotSupportedException>(() => body.New(typeof(RefProbe), new ExternalValueExpression()));
         Assert.Throws<NotSupportedException>(() => body.Call(
             body.Parameter<string>("text"),

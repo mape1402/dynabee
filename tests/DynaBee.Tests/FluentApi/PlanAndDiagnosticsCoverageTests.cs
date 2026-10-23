@@ -203,6 +203,36 @@ public sealed class PlanAndDiagnosticsCoverageTests
     }
 
     [Fact]
+    public void Diagnostics_Use_Safe_Names_For_Type_Wrappers_And_Their_Interfaces()
+    {
+        var interfaceType = new NullFullNameType(typeof(IDisposable));
+        var wrappedType = new NullFullNameType(typeof(object), interfaceType);
+        var context = new AssemblyContext(
+            "Diagnostics",
+            typeof(PlanAndDiagnosticsCoverageTests).Assembly,
+            new[] { new TypeContext("Wrapped", wrappedType, Array.Empty<IElementContext>()) });
+
+        var type = Assert.Single(context.GetDiagnostics().Types);
+
+        Assert.Equal(typeof(object).Name, type.FullName);
+        Assert.Equal(new[] { typeof(IDisposable).Name }, type.Interfaces);
+    }
+
+    [Fact]
+    public void Diagnostics_Use_Context_Identity_When_Assembly_Metadata_Is_Unavailable()
+    {
+        var context = new AssemblyContext(
+            "FallbackAssembly",
+            new FallbackAssembly(),
+            Array.Empty<ITypeContext>());
+
+        var diagnostics = context.GetDiagnostics();
+
+        Assert.Equal("FallbackAssembly", diagnostics.Name);
+        Assert.Equal("0.0.0.0", diagnostics.Version);
+    }
+
+    [Fact]
     public void Generation_Plan_Validation_Handles_Malformed_Extension_Descriptors()
     {
         var plan = new DynaBeeGenerationPlan("DynaBee.Tests.MalformedExtensionPlan");
@@ -355,6 +385,62 @@ public sealed class PlanAndDiagnosticsCoverageTests
 
     private static Type GetNestedType(string name)
         => typeof(AccessShapes).GetNestedType(name, BindingFlags.Public | BindingFlags.NonPublic)!;
+
+    private sealed class NullFullNameType : TypeDelegator
+    {
+        private readonly Type _type;
+        private readonly Type[] _interfaces;
+
+        public NullFullNameType(Type type, params Type[] interfaces)
+            : base(type)
+        {
+            _type = type;
+            _interfaces = interfaces;
+        }
+
+        public override string FullName => null;
+
+        public override Type[] GetInterfaces()
+            => _interfaces;
+
+        public override IList<CustomAttributeData> GetCustomAttributesData()
+            => _type.GetCustomAttributesData();
+    }
+
+    private sealed class FallbackAssembly : Assembly
+    {
+        public override string FullName => null;
+
+        public override string Location => string.Empty;
+
+        public override MethodInfo EntryPoint => null;
+
+        public override string ImageRuntimeVersion => string.Empty;
+
+        public override AssemblyName GetName(bool copiedName)
+            => new();
+
+        public override Type[] GetTypes()
+            => Array.Empty<Type>();
+
+        public override Type GetType(string name, bool throwOnError, bool ignoreCase)
+            => null;
+
+        public override Module[] GetModules(bool getResourceModules)
+            => Array.Empty<Module>();
+
+        public override Module GetModule(string name)
+            => null;
+
+        public override AssemblyName[] GetReferencedAssemblies()
+            => Array.Empty<AssemblyName>();
+
+        public override Assembly GetSatelliteAssembly(System.Globalization.CultureInfo culture)
+            => throw new NotSupportedException();
+
+        public override Assembly GetSatelliteAssembly(System.Globalization.CultureInfo culture, Version version)
+            => throw new NotSupportedException();
+    }
 
     public interface IPlanContract
     {
