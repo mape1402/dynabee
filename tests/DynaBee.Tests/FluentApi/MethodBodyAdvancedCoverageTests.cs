@@ -200,6 +200,95 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.Equal(typeof(object), body.Constant((object)null!).Type);
     }
 
+    [Fact]
+    public void GeneratedBodies_Execute_DeferredVoidReturns_DefaultValues_And_AllDecimalConversions()
+    {
+        AdvancedRecorder.FinallyCount = 0;
+
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Completion", type => type
+                .AddVoidMethod("ReturnFromTry", method => method
+                    .EmitsBody(body => body.Try(
+                        tryBody => tryBody.Return(),
+                        finallyBody: finallyBody => finallyBody.Evaluate(finallyBody.StaticCall(
+                            typeof(AdvancedRecorder),
+                            nameof(AdvancedRecorder.RecordFinally),
+                            Type.EmptyTypes)))))
+                .AddMethod("DefaultDate", typeof(DateTime), method => method
+                    .EmitsBody(body => body.Return(body.Default<DateTime>())))
+                .AddMethod("DefaultFromNull", typeof(DateTime), method => method
+                    .EmitsBody(body => body.Return(body.Constant(null!, typeof(DateTime)))))
+                .AddMethod("LongToDecimal", typeof(decimal), method => method
+                    .WithParameter<long>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<long>("value")))))
+                .AddMethod("FloatToDecimal", typeof(decimal), method => method
+                    .WithParameter<float>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<float>("value")))))
+                .AddMethod("DoubleToDecimal", typeof(decimal), method => method
+                    .WithParameter<double>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<double>("value")))))
+                .AddMethod("NoElse", typeof(int), method => method
+                    .WithParameter<bool>("condition")
+                    .EmitsBody(body =>
+                    {
+                        var result = body.DeclareLocal<int>("result");
+                        body.Assign(result, body.Constant(0));
+                        body.If(body.Parameter<bool>("condition"), whenTrue => whenTrue.Assign(result, whenTrue.Constant(1)));
+                        body.Return(result);
+                    })))
+            .Build();
+
+        var instance = context.CreateInstance("Completion");
+        var type = instance.GetType();
+
+        type.GetMethod("ReturnFromTry")!.Invoke(instance, null);
+        Assert.Equal(1, AdvancedRecorder.FinallyCount);
+        Assert.Equal(default(DateTime), type.GetMethod("DefaultDate")!.Invoke(instance, null));
+        Assert.Equal(default(DateTime), type.GetMethod("DefaultFromNull")!.Invoke(instance, null));
+        Assert.Equal(123m, type.GetMethod("LongToDecimal")!.Invoke(instance, new object[] { 123L }));
+        Assert.Equal(1.25m, type.GetMethod("FloatToDecimal")!.Invoke(instance, new object[] { 1.25f }));
+        Assert.Equal(2.5m, type.GetMethod("DoubleToDecimal")!.Invoke(instance, new object[] { 2.5d }));
+        Assert.Equal(1, type.GetMethod("NoElse")!.Invoke(instance, new object[] { true }));
+        Assert.Equal(0, type.GetMethod("NoElse")!.Invoke(instance, new object[] { false }));
+    }
+
+    [Fact]
+    public void MethodBodyBuilder_Rejects_Unsupported_Extensibility_And_Invalid_Call_Shapes()
+    {
+        var body = CreateBody(("value", typeof(int), 0), ("text", typeof(string), 1));
+        var genericDefinition = typeof(Enumerable)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Single(method => method.Name == nameof(Enumerable.Empty) && method.IsGenericMethodDefinition);
+        var instanceMethod = typeof(string).GetMethod(nameof(string.ToString), Type.EmptyTypes)!;
+        var staticMethod = typeof(DateTime).GetMethod(nameof(DateTime.IsLeapYear))!;
+
+        Assert.Throws<ArgumentNullException>(() => body.Convert(body.Constant(1), null!));
+        Assert.Throws<NotSupportedException>(() => body.Evaluate(new ExternalValueExpression()));
+        Assert.Throws<NotSupportedException>(() => body.Assign(new ExternalAssignableExpression(), body.Constant(1)));
+        Assert.Throws<NotSupportedException>(() => body.Concat(body.Constant("value"), new ExternalValueExpression()));
+        Assert.Throws<InvalidOperationException>(() => body.StaticCall(genericDefinition));
+        Assert.Throws<InvalidOperationException>(() => body.StaticCall(instanceMethod));
+        Assert.Throws<InvalidOperationException>(() => body.Call(body.Parameter<string>("text"), staticMethod, body.Constant(2024)));
+        Assert.Throws<InvalidOperationException>(() => body.Call(body.Parameter<int>("value"), instanceMethod));
+        Assert.Equal(typeof(string), body.Call(body.Parameter<int>("value"), nameof(int.ToString), Type.EmptyTypes).Type);
+        Assert.Throws<NotSupportedException>(() => body.LessThan(body.Parameter<string>("text"), body.Constant("other")));
+        Assert.Equal(typeof(string), body.Add(body.Parameter<string>("text"), body.Constant(new object())).Type);
+        Assert.Throws<InvalidOperationException>(() => body.Coalesce(
+            body.Constant(null!, typeof(Stream)),
+            body.Constant(10)));
+    }
+
+    [Fact]
+    public void MethodBodyBuilder_Resolves_Coalesce_Result_Types_And_Null_Argument_Collections()
+    {
+        var body = CreateBody(("value", typeof(string), 0));
+
+        Assert.Equal(typeof(RefProbe), body.New(typeof(RefProbe), null!).Type);
+        Assert.Equal(typeof(string), body.Concat(null!).Type);
+        Assert.Equal(typeof(object), body.Coalesce(body.Parameter<string>("value"), body.Constant(null!, typeof(object))).Type);
+        Assert.Equal(typeof(string), body.Coalesce(body.Parameter<string>("value"), body.Constant(10)).Type);
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");
@@ -279,5 +368,15 @@ public sealed class MethodBodyAdvancedCoverageTests
             get => 0;
             set { }
         }
+    }
+
+    private sealed class ExternalValueExpression : IBeeValueExpression
+    {
+        public Type Type => typeof(int);
+    }
+
+    private sealed class ExternalAssignableExpression : IBeeAssignableExpression
+    {
+        public Type Type => typeof(int);
     }
 }
