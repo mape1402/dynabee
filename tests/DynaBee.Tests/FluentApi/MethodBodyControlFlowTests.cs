@@ -5,6 +5,21 @@ using DynaBee.FluentApi;
 public sealed class MethodBodyControlFlowTests
 {
     [Fact]
+    public void EmitsBody_Uses_The_Correct_Default_Local_After_Declared_Locals()
+    {
+        var context = new BeeAssemblyBuilder("DynaBee.Tests.ControlFlow.DefaultReturn")
+            .AddClass("DefaultImplementation", type => type
+                .Implements<IDefaultReturnContract>()
+                .AddMethod(nameof(IDefaultReturnContract.GetDefault), typeof(int), method => method
+                    .EmitsBody(body => body.DeclareLocal<string>("text"))))
+            .Build();
+
+        var value = context.CreateInstance<IDefaultReturnContract>("DefaultImplementation");
+
+        Assert.Equal(0, value.GetDefault());
+    }
+
+    [Fact]
     public void EmitsBody_Supports_While_Break_And_Continue()
     {
         var context = new BeeAssemblyBuilder("DynaBee.Tests.ControlFlow.Loops")
@@ -102,6 +117,11 @@ public sealed class MethodBodyControlFlowTests
     public interface ILoopContract
     {
         int SumOddUntilThree(int limit);
+    }
+
+    public interface IDefaultReturnContract
+    {
+        int GetDefault();
     }
 
     public interface IExceptionContract
