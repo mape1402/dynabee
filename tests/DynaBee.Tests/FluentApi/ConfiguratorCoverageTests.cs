@@ -411,6 +411,65 @@ public sealed class ConfiguratorCoverageTests
         Assert.Equal("four", values[1]);
     }
 
+    [Fact]
+    public void Property_Overrides_Support_Constant_And_Default_Accessor_Bodies_And_Reject_Setter_Constants()
+    {
+        var constant = typeof(OverrideBase).GetProperty(nameof(OverrideBase.ConstantText))!;
+        var defaultValue = typeof(OverrideBase).GetProperty(nameof(OverrideBase.DefaultNumber))!;
+        var writable = typeof(OverrideBase).GetProperty(nameof(OverrideBase.Number))!;
+
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("OverrideBodies", type => type
+                .Inherits<OverrideBase>()
+                .OverrideProperty(constant, property => property.Getter(getter => getter.ReturnsConstant("constant")))
+                .OverrideProperty(defaultValue, property => property.Getter(getter => getter.EmitsBody(_ => { }))))
+            .Build();
+
+        var instance = (OverrideBase)context.CreateInstance("OverrideBodies");
+        Assert.Equal("constant", instance.ConstantText);
+        Assert.Equal(0, instance.DefaultNumber);
+        Assert.Throws<InvalidOperationException>(() => BuildInvalid(type => type
+            .OverrideProperty(writable, property => property.Setter(setter => setter.ReturnsConstant(1)))));
+    }
+
+    [Fact]
+    public void Expression_Emitter_Translates_Operators_Calls_Members_Construction_And_Conversions()
+    {
+        Expression<Func<int, int, int>> modulo = (left, right) => left % right;
+        Expression<Func<bool, bool, bool>> and = (left, right) => left && right;
+        Expression<Func<bool, bool, bool>> or = (left, right) => left || right;
+        Expression<Func<string, string, string>> concat = (left, right) => left + right;
+        Expression<Func<ExpressionProbe, int>> virtualCall = value => value.VirtualValue();
+        Expression<Func<ExpressionProbe, int>> property = value => value.Value;
+        Expression<Func<int, int>> constructed = value => new ExpressionBox(value).Value;
+        Expression<Func<int, long>> widen = value => (long)value;
+        Expression<Func<object, int>> unbox = value => (int)value;
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Expressions", type => type
+                .AddMethod("Modulo", typeof(int), method => method.WithParameter<int>("left").WithParameter<int>("right").EmitsExpression(modulo))
+                .AddMethod("And", typeof(bool), method => method.WithParameter<bool>("left").WithParameter<bool>("right").EmitsExpression(and))
+                .AddMethod("Or", typeof(bool), method => method.WithParameter<bool>("left").WithParameter<bool>("right").EmitsExpression(or))
+                .AddMethod("Concat", typeof(string), method => method.WithParameter<string>("left").WithParameter<string>("right").EmitsExpression(concat))
+                .AddMethod("Virtual", typeof(int), method => method.WithParameter<ExpressionProbe>("value").EmitsExpression(virtualCall))
+                .AddMethod("Property", typeof(int), method => method.WithParameter<ExpressionProbe>("value").EmitsExpression(property))
+                .AddMethod("Constructed", typeof(int), method => method.WithParameter<int>("value").EmitsExpression(constructed))
+                .AddMethod("Widen", typeof(long), method => method.WithParameter<int>("value").EmitsExpression(widen))
+                .AddMethod("Unbox", typeof(int), method => method.WithParameter<object>("value").EmitsExpression(unbox)))
+            .Build();
+        var instance = context.CreateInstance("Expressions");
+        var type = instance.GetType();
+
+        Assert.Equal(1, type.GetMethod("Modulo")!.Invoke(instance, new object[] { 7, 3 }));
+        Assert.False((bool)type.GetMethod("And")!.Invoke(instance, new object[] { true, false })!);
+        Assert.True((bool)type.GetMethod("Or")!.Invoke(instance, new object[] { false, true })!);
+        Assert.Equal("ab", type.GetMethod("Concat")!.Invoke(instance, new object[] { "a", "b" }));
+        Assert.Equal(9, type.GetMethod("Virtual")!.Invoke(instance, new object[] { new ExpressionProbe(4) }));
+        Assert.Equal(4, type.GetMethod("Property")!.Invoke(instance, new object[] { new ExpressionProbe(4) }));
+        Assert.Equal(5, type.GetMethod("Constructed")!.Invoke(instance, new object[] { 5 }));
+        Assert.Equal(6L, type.GetMethod("Widen")!.Invoke(instance, new object[] { 6 }));
+        Assert.Equal(7, type.GetMethod("Unbox")!.Invoke(instance, new object[] { 7 }));
+    }
+
     private static void BuildInvalid(Action<BeeClassBuilder> configure)
         => new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("Invalid", type =>
@@ -502,6 +561,8 @@ public sealed class ConfiguratorCoverageTests
 
         public virtual string DefaultText => "base";
 
+        public virtual string ConstantText => "base";
+
         public int NonVirtual { get; set; }
 
         public virtual int VirtualMethod()
@@ -559,5 +620,21 @@ public sealed class ConfiguratorCoverageTests
 
     public interface IEmptyContract
     {
+    }
+
+    public class ExpressionProbe
+    {
+        public ExpressionProbe(int value) => Value = value;
+
+        public virtual int Value { get; }
+
+        public virtual int VirtualValue() => Value + 5;
+    }
+
+    public sealed class ExpressionBox
+    {
+        public ExpressionBox(int value) => Value = value;
+
+        public int Value { get; }
     }
 }
