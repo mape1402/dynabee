@@ -2,6 +2,7 @@ namespace DynaBee.Tests.FluentApi;
 
 using System.Reflection;
 using DynaBee.FluentApi;
+using DynaBee.FluentApi.Diagnostics;
 using DynaBee.Infrastructure;
 using DynaBee.Infrastructure.Configurators;
 
@@ -119,6 +120,44 @@ public sealed class FluentValidationCoverageTests
         Assert.Throws<InvalidOperationException>(() => new BeeInterfaceContractBuilder(owner, typeof(IContractWithMembers), false)
             .RequireExplicitImplementations()
             .Apply());
+    }
+
+    [Fact]
+    public void Diagnostics_Reports_All_Generated_Field_And_Method_Access_Modifiers()
+    {
+        var context = new BeeAssemblyBuilder($"DynaBee.Tests.Diagnostics.{Guid.NewGuid():N}")
+            .AddClass("Visibility", type => type
+                .AddField<int>("PublicField", FieldAccessModifier.Public)
+                .AddField<int>("PrivateField", FieldAccessModifier.Private)
+                .AddField<int>("InternalField", FieldAccessModifier.Internal)
+                .AddField<int>("ProtectedField", FieldAccessModifier.Protected)
+                .AddField<int>("ProtectedInternalField", FieldAccessModifier.ProtectedInternal)
+                .AddField<int>("PrivateProtectedField", FieldAccessModifier.PrivateProtected)
+                .AddMethod("PublicMethod", typeof(void), method => method.WithAccess(MethodAccessModifier.Public))
+                .AddMethod("PrivateMethod", typeof(void), method => method.WithAccess(MethodAccessModifier.Private))
+                .AddMethod("InternalMethod", typeof(void), method => method.WithAccess(MethodAccessModifier.Internal))
+                .AddMethod("ProtectedMethod", typeof(void), method => method.WithAccess(MethodAccessModifier.Protected))
+                .AddMethod("ProtectedInternalMethod", typeof(void), method => method.WithAccess(MethodAccessModifier.ProtectedInternal))
+                .AddMethod("PrivateProtectedMethod", typeof(void), method => method.WithAccess(MethodAccessModifier.PrivateProtected))
+                .AddProperty<int>("ReadOnly", property => property.AsReadOnly()))
+            .Build();
+
+        var members = context.GetDiagnostics().Types.Single().Members;
+
+        Assert.Equal("Public", members.Single(x => x.Name == "PublicField").AccessModifier);
+        Assert.Equal("Private", members.Single(x => x.Name == "PrivateField").AccessModifier);
+        Assert.Equal("Internal", members.Single(x => x.Name == "InternalField").AccessModifier);
+        Assert.Equal("Protected", members.Single(x => x.Name == "ProtectedField").AccessModifier);
+        Assert.Equal("ProtectedInternal", members.Single(x => x.Name == "ProtectedInternalField").AccessModifier);
+        Assert.Equal("PrivateProtected", members.Single(x => x.Name == "PrivateProtectedField").AccessModifier);
+        Assert.Equal("Public", members.Single(x => x.Name == "PublicMethod").AccessModifier);
+        Assert.Equal("Private", members.Single(x => x.Name == "PrivateMethod").AccessModifier);
+        Assert.Equal("Internal", members.Single(x => x.Name == "InternalMethod").AccessModifier);
+        Assert.Equal("Protected", members.Single(x => x.Name == "ProtectedMethod").AccessModifier);
+        Assert.Equal("ProtectedInternal", members.Single(x => x.Name == "ProtectedInternalMethod").AccessModifier);
+        Assert.Equal("PrivateProtected", members.Single(x => x.Name == "PrivateProtectedMethod").AccessModifier);
+        Assert.Contains("get:Public", members.Single(x => x.Name == "ReadOnly").Signature);
+        Assert.Contains("set:-", members.Single(x => x.Name == "ReadOnly").Signature);
     }
 
     public interface IContractWithMembers
