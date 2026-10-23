@@ -28,103 +28,82 @@ public sealed class MethodBodyAdvancedCoverageTests
         type.GetMethod("OnlyTrue")!.Invoke(instance, new object[] { false });
     }
     [Fact]
-    public void GeneratedBodies_Execute_Advanced_Construction_Control_Flow_And_Disposal()
+    public void GeneratedBodies_Call_Generated_Methods_And_Construct_Objects()
     {
-        var token = new Token("constant");
-        ValueProbe.DisposeCount = 0;
-        RefProbe.DisposeCount = 0;
-        AdvancedRecorder.FinallyCount = 0;
-
-        var context = new BeeAssemblyBuilder(NewAssemblyName())
-            .AddClass("Advanced", type => type
-                .AddMethod("Helper", typeof(int), method => method
-                    .WithParameter<int>("value")
-                    .EmitsBody(body => body.Return(body.Add(body.Parameter<int>("value"), body.Constant(1)))))
-                .AddMethod("CallHelper", typeof(int), method => method
-                    .WithParameter<int>("value")
-                    .EmitsBody(body => body.Return(body.Call(body.Self(), "Helper", new[] { typeof(int) }, body.Parameter<int>("value")))))
-                .AddMethod("Construct", typeof(int), method => method
-                    .WithParameter<int>("value")
-                    .EmitsBody(body => body.Return(body.Property(body.New(typeof(ConstructorTarget), body.Parameter<int>("value")), nameof(ConstructorTarget.Value)))))
-                .AddMethod("Constant", typeof(Token), method => method
-                    .EmitsBody(body => body.Return(body.Constant(token, typeof(Token)))))
-                .AddMethod("CoalesceNullable", typeof(int), method => method
-                    .WithParameter<int?>("value")
-                    .EmitsBody(body => body.Return(body.Coalesce(body.Parameter<int?>("value"), body.Constant(9)))))
-                .AddMethod("UseValue", typeof(int), method => method
-                    .WithParameter<ValueProbe>("probe")
-                    .EmitsBody(body => body.Using(body.Parameter<ValueProbe>("probe"), "resource", (_, scope) => scope.Return(scope.Constant(6)))))
-                .AddMethod("UseReference", typeof(int), method => method
-                    .WithParameter<RefProbe>("probe")
-                    .EmitsBody(body => body.Using(body.Parameter<RefProbe>("probe"), "resource", (_, scope) => scope.Return(scope.Constant(7)))))
-                .AddMethod("TryFinally", typeof(int), method => method
-                    .EmitsBody(body => body.Try(
-                        tryBody => tryBody.Return(tryBody.Constant(8)),
-                        finallyBody: finallyBody => finallyBody.Evaluate(finallyBody.StaticCall(
-                            typeof(AdvancedRecorder),
-                            nameof(AdvancedRecorder.RecordFinally),
-                            Type.EmptyTypes)))))
-                .AddMethod("SwitchWithoutDefault", typeof(string), method => method
-                    .WithParameter<int>("value")
-                    .EmitsBody(body =>
-                    {
-                        var result = body.DeclareLocal<string>("result");
-                        body.Assign(result, body.Default<string>());
-                        body.Switch(body.Parameter<int>("value"), branches => branches.Case(1, branch => branch.Assign(result, branch.Constant("one"))));
-                        body.Return(result);
-                    }))
-                .AddMethod("LongArray", typeof(long), method => method
-                    .WithParameter<long>("value")
-                    .EmitsBody(body => CopyArrayValue<long>(body, body.Parameter<long>("value"))))
-                .AddMethod("FloatArray", typeof(float), method => method
-                    .WithParameter<float>("value")
-                    .EmitsBody(body => CopyArrayValue<float>(body, body.Parameter<float>("value"))))
-                .AddMethod("DoubleArray", typeof(double), method => method
-                    .WithParameter<double>("value")
-                    .EmitsBody(body => CopyArrayValue<double>(body, body.Parameter<double>("value"))))
-                .AddMethod("ShortArray", typeof(short), method => method
-                    .WithParameter<short>("value")
-                    .EmitsBody(body => CopyArrayValue<short>(body, body.Parameter<short>("value"))))
-                .AddMethod("ByteArray", typeof(byte), method => method
-                    .WithParameter<byte>("value")
-                    .EmitsBody(body => CopyArrayValue<byte>(body, body.Parameter<byte>("value"))))
-                .AddMethod("TokenArray", typeof(Token), method => method
-                    .WithParameter<Token>("value")
-                    .EmitsBody(body => CopyArrayValue<Token>(body, body.Parameter<Token>("value"))))
-                .AddMethod("DateArray", typeof(DateTime), method => method
-                    .WithParameter<DateTime>("value")
-                    .EmitsBody(body => CopyArrayValue<DateTime>(body, body.Parameter<DateTime>("value")))))
-            .Build();
-
-        var instance = context.CreateInstance("Advanced");
-        var type = instance.GetType();
-        var referenceProbe = new RefProbe();
-        var timestamp = new DateTime(2026, 10, 23);
+        var type = CreateAdvancedType(new Token("constant"), out var instance);
 
         Assert.Equal(5, type.GetMethod("CallHelper")!.Invoke(instance, new object[] { 4 }));
         Assert.Equal(11, type.GetMethod("Construct")!.Invoke(instance, new object[] { 11 }));
+    }
+
+    [Fact]
+    public void GeneratedBodies_Preserve_NonNative_Constants_And_Array_Values()
+    {
+        var token = new Token("constant");
+        var type = CreateAdvancedType(token, out var instance);
+
         Assert.Same(token, type.GetMethod("Constant")!.Invoke(instance, null));
+        Assert.Same(token, type.GetMethod("TokenArray")!.Invoke(instance, new object[] { token }));
+    }
+
+    [Fact]
+    public void GeneratedBodies_Coalesce_Nullable_Values()
+    {
+        var type = CreateAdvancedType(new Token("constant"), out var instance);
+
         Assert.Equal(9, type.GetMethod("CoalesceNullable")!.Invoke(instance, new object[] { null! }));
         Assert.Equal(3, type.GetMethod("CoalesceNullable")!.Invoke(instance, new object[] { 3 }));
+    }
+
+    [Fact]
+    public void GeneratedBodies_Dispose_Value_And_Reference_Resources()
+    {
+        ValueProbe.DisposeCount = 0;
+        RefProbe.DisposeCount = 0;
+        var type = CreateAdvancedType(new Token("constant"), out var instance);
+        var referenceProbe = new RefProbe();
+
         Assert.Equal(6, type.GetMethod("UseValue")!.Invoke(instance, new object[] { new ValueProbe() }));
         Assert.Equal(1, ValueProbe.DisposeCount);
         Assert.Equal(7, type.GetMethod("UseReference")!.Invoke(instance, new object[] { referenceProbe }));
         Assert.Equal(1, RefProbe.DisposeCount);
         Assert.Equal(7, type.GetMethod("UseReference")!.Invoke(instance, new object[] { null! }));
         Assert.Equal(1, RefProbe.DisposeCount);
+    }
+
+    [Fact]
+    public void GeneratedBodies_Execute_Finally_Blocks_Before_Returning()
+    {
+        AdvancedRecorder.FinallyCount = 0;
+        var type = CreateAdvancedType(new Token("constant"), out var instance);
+
         Assert.Equal(8, type.GetMethod("TryFinally")!.Invoke(instance, null));
         Assert.Equal(1, AdvancedRecorder.FinallyCount);
+    }
+
+    [Fact]
+    public void GeneratedBodies_Return_Default_When_Switch_Has_No_Matching_Case()
+    {
+        var type = CreateAdvancedType(new Token("constant"), out var instance);
+
         Assert.Equal("one", type.GetMethod("SwitchWithoutDefault")!.Invoke(instance, new object[] { 1 }));
         Assert.Null(type.GetMethod("SwitchWithoutDefault")!.Invoke(instance, new object[] { 8 }));
+    }
+
+    [Fact]
+    public void GeneratedBodies_RoundTrip_All_Supported_Array_Element_Shapes()
+    {
+        var token = new Token("constant");
+        var type = CreateAdvancedType(token, out var instance);
+        var timestamp = new DateTime(2026, 10, 23);
+
         Assert.Equal(7L, type.GetMethod("LongArray")!.Invoke(instance, new object[] { 7L }));
         Assert.Equal(1.5f, type.GetMethod("FloatArray")!.Invoke(instance, new object[] { 1.5f }));
         Assert.Equal(2.5d, type.GetMethod("DoubleArray")!.Invoke(instance, new object[] { 2.5d }));
         Assert.Equal((short)3, type.GetMethod("ShortArray")!.Invoke(instance, new object[] { (short)3 }));
         Assert.Equal((byte)4, type.GetMethod("ByteArray")!.Invoke(instance, new object[] { (byte)4 }));
-        Assert.Same(token, type.GetMethod("TokenArray")!.Invoke(instance, new object[] { token }));
         Assert.Equal(timestamp, type.GetMethod("DateArray")!.Invoke(instance, new object[] { timestamp }));
     }
-
     [Fact]
     public void MethodBodyBuilder_Validates_Advanced_Expression_And_Control_Flow_Contracts()
     {
@@ -221,57 +200,42 @@ public sealed class MethodBodyAdvancedCoverageTests
     }
 
     [Fact]
-    public void GeneratedBodies_Execute_DeferredVoidReturns_DefaultValues_And_AllDecimalConversions()
+    public void GeneratedBodies_Execute_Finally_Blocks_For_Void_Returns()
     {
         AdvancedRecorder.FinallyCount = 0;
-
-        var context = new BeeAssemblyBuilder(NewAssemblyName())
-            .AddClass("Completion", type => type
-                .AddVoidMethod("ReturnFromTry", method => method
-                    .EmitsBody(body => body.Try(
-                        tryBody => tryBody.Return(),
-                        finallyBody: finallyBody => finallyBody.Evaluate(finallyBody.StaticCall(
-                            typeof(AdvancedRecorder),
-                            nameof(AdvancedRecorder.RecordFinally),
-                            Type.EmptyTypes)))))
-                .AddMethod("DefaultDate", typeof(DateTime), method => method
-                    .EmitsBody(body => body.Return(body.Default<DateTime>())))
-                .AddMethod("DefaultFromNull", typeof(DateTime), method => method
-                    .EmitsBody(body => body.Return(body.Constant(null!, typeof(DateTime)))))
-                .AddMethod("LongToDecimal", typeof(decimal), method => method
-                    .WithParameter<long>("value")
-                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<long>("value")))))
-                .AddMethod("FloatToDecimal", typeof(decimal), method => method
-                    .WithParameter<float>("value")
-                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<float>("value")))))
-                .AddMethod("DoubleToDecimal", typeof(decimal), method => method
-                    .WithParameter<double>("value")
-                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<double>("value")))))
-                .AddMethod("NoElse", typeof(int), method => method
-                    .WithParameter<bool>("condition")
-                    .EmitsBody(body =>
-                    {
-                        var result = body.DeclareLocal<int>("result");
-                        body.Assign(result, body.Constant(0));
-                        body.If(body.Parameter<bool>("condition"), whenTrue => whenTrue.Assign(result, whenTrue.Constant(1)));
-                        body.Return(result);
-                    })))
-            .Build();
-
-        var instance = context.CreateInstance("Completion");
-        var type = instance.GetType();
+        var type = CreateCompletionType(out var instance);
 
         type.GetMethod("ReturnFromTry")!.Invoke(instance, null);
         Assert.Equal(1, AdvancedRecorder.FinallyCount);
+    }
+
+    [Fact]
+    public void GeneratedBodies_Return_Default_ValueTypes()
+    {
+        var type = CreateCompletionType(out var instance);
+
         Assert.Equal(default(DateTime), type.GetMethod("DefaultDate")!.Invoke(instance, null));
         Assert.Equal(default(DateTime), type.GetMethod("DefaultFromNull")!.Invoke(instance, null));
+    }
+
+    [Fact]
+    public void GeneratedBodies_Convert_Numeric_Values_To_Decimal()
+    {
+        var type = CreateCompletionType(out var instance);
+
         Assert.Equal(123m, type.GetMethod("LongToDecimal")!.Invoke(instance, new object[] { 123L }));
         Assert.Equal(1.25m, type.GetMethod("FloatToDecimal")!.Invoke(instance, new object[] { 1.25f }));
         Assert.Equal(2.5m, type.GetMethod("DoubleToDecimal")!.Invoke(instance, new object[] { 2.5d }));
+    }
+
+    [Fact]
+    public void GeneratedBodies_Leave_Default_When_OneSided_Conditional_Does_Not_Run()
+    {
+        var type = CreateCompletionType(out var instance);
+
         Assert.Equal(1, type.GetMethod("NoElse")!.Invoke(instance, new object[] { true }));
         Assert.Equal(0, type.GetMethod("NoElse")!.Invoke(instance, new object[] { false }));
     }
-
     [Fact]
     public void MethodBodyBuilder_Rejects_Unsupported_Extensibility_And_Invalid_Call_Shapes()
     {
@@ -524,59 +488,40 @@ public sealed class MethodBodyAdvancedCoverageTests
     }
 
     [Fact]
-    public void GeneratedBodies_Apply_Numeric_Promotions_And_Nullable_Conversions()
+    public void GeneratedBodies_Apply_Numeric_Promotions()
     {
-        var context = new BeeAssemblyBuilder(NewAssemblyName())
-            .AddClass("NumericPromotions", type => type
-                .AddMethod("FloatLess", typeof(bool), method => method
-                    .WithParameter<float>("left")
-                    .WithParameter<int>("right")
-                    .EmitsBody(body => body.Return(body.LessThan(body.Parameter<float>("left"), body.Parameter<int>("right")))))
-                .AddMethod("LongLess", typeof(bool), method => method
-                    .WithParameter<long>("left")
-                    .WithParameter<int>("right")
-                    .EmitsBody(body => body.Return(body.LessThan(body.Parameter<long>("left"), body.Parameter<int>("right")))))
-                .AddMethod("DoubleDivide", typeof(double), method => method
-                    .WithParameter<double>("left")
-                    .WithParameter<int>("right")
-                    .EmitsBody(body => body.Return(body.Divide(body.Parameter<double>("left"), body.Parameter<int>("right")))))
-                .AddMethod("NullableToNullable", typeof(long?), method => method
-                    .WithParameter<int?>("value")
-                    .EmitsBody(body => body.Return(body.Convert<long?>(body.Parameter<int?>("value")))))
-                .AddMethod("ByteDecimal", typeof(decimal), method => method
-                    .WithParameter<byte>("value")
-                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<byte>("value")))))
-                .AddMethod("ShortDecimal", typeof(decimal), method => method
-                    .WithParameter<short>("value")
-                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<short>("value")))))
-                .AddMethod("IntDecimal", typeof(decimal), method => method
-                    .WithParameter<int>("value")
-                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<int>("value")))))
-                .AddMethod("LongDecimal", typeof(decimal), method => method
-                    .WithParameter<long>("value")
-                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<long>("value")))))
-                .AddMethod("FloatDecimal", typeof(decimal), method => method
-                    .WithParameter<float>("value")
-                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<float>("value")))))
-                .AddMethod("DoubleDecimal", typeof(decimal), method => method
-                    .WithParameter<double>("value")
-                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<double>("value"))))))
-            .Build();
-        var instance = context.CreateInstance("NumericPromotions");
-        var type = instance.GetType();
+        var type = CreateNumericPromotionType(out var instance);
 
         Assert.True((bool)type.GetMethod("FloatLess")!.Invoke(instance, new object[] { 1.5f, 2 })!);
         Assert.True((bool)type.GetMethod("LongLess")!.Invoke(instance, new object[] { 1L, 2 })!);
         Assert.Equal(2.5d, type.GetMethod("DoubleDivide")!.Invoke(instance, new object[] { 5d, 2 }));
+    }
+
+    [Fact]
+    public void GeneratedBodies_Convert_Nullable_Values()
+    {
+        var type = CreateNumericPromotionType(out var instance);
+
         Assert.Equal(4L, type.GetMethod("NullableToNullable")!.Invoke(instance, new object[] { 4 }));
         Assert.Null(type.GetMethod("NullableToNullable")!.Invoke(instance, new object[] { null! }));
+    }
+
+    [Fact]
+    public void GeneratedBodies_Convert_All_Supported_Numeric_Inputs_To_Decimal()
+    {
+        var type = CreateNumericPromotionType(out var instance);
+
         Assert.Equal(1m, type.GetMethod("ByteDecimal")!.Invoke(instance, new object[] { (byte)1 }));
         Assert.Equal(2m, type.GetMethod("ShortDecimal")!.Invoke(instance, new object[] { (short)2 }));
         Assert.Equal(3m, type.GetMethod("IntDecimal")!.Invoke(instance, new object[] { 3 }));
         Assert.Equal(4m, type.GetMethod("LongDecimal")!.Invoke(instance, new object[] { 4L }));
         Assert.Equal(5m, type.GetMethod("FloatDecimal")!.Invoke(instance, new object[] { 5f }));
         Assert.Equal(6m, type.GetMethod("DoubleDecimal")!.Invoke(instance, new object[] { 6d }));
+    }
 
+    [Fact]
+    public void IlConversions_Report_All_Advanced_Numeric_Conversions_As_Supported()
+    {
         Assert.True(BeeIlConversions.CanConvert(typeof(int?), typeof(long?)));
         Assert.True(BeeIlConversions.CanConvert(typeof(byte), typeof(decimal)));
         Assert.True(BeeIlConversions.CanConvert(typeof(short), typeof(decimal)));
@@ -585,7 +530,6 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.True(BeeIlConversions.CanConvert(typeof(float), typeof(decimal)));
         Assert.True(BeeIlConversions.CanConvert(typeof(double), typeof(decimal)));
     }
-
     [Fact]
     public void MethodBodyBuilder_Handles_Optional_Arguments_Ambiguous_Members_And_Inherited_TypeBuilder_Members()
     {
@@ -728,6 +672,155 @@ public sealed class MethodBodyAdvancedCoverageTests
 
         Assert.Equal("value!", type.GetMethod("Append")!.Invoke(instance, new object[] { "value" }));
         Assert.Equal(7, type.GetMethod("ReturnFromCatch")!.Invoke(instance, null));
+    }
+
+    private static Type CreateNumericPromotionType(out object instance)
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("NumericPromotions", type => type
+                .AddMethod("FloatLess", typeof(bool), method => method
+                    .WithParameter<float>("left")
+                    .WithParameter<int>("right")
+                    .EmitsBody(body => body.Return(body.LessThan(body.Parameter<float>("left"), body.Parameter<int>("right")))))
+                .AddMethod("LongLess", typeof(bool), method => method
+                    .WithParameter<long>("left")
+                    .WithParameter<int>("right")
+                    .EmitsBody(body => body.Return(body.LessThan(body.Parameter<long>("left"), body.Parameter<int>("right")))))
+                .AddMethod("DoubleDivide", typeof(double), method => method
+                    .WithParameter<double>("left")
+                    .WithParameter<int>("right")
+                    .EmitsBody(body => body.Return(body.Divide(body.Parameter<double>("left"), body.Parameter<int>("right")))))
+                .AddMethod("NullableToNullable", typeof(long?), method => method
+                    .WithParameter<int?>("value")
+                    .EmitsBody(body => body.Return(body.Convert<long?>(body.Parameter<int?>("value")))))
+                .AddMethod("ByteDecimal", typeof(decimal), method => method
+                    .WithParameter<byte>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<byte>("value")))))
+                .AddMethod("ShortDecimal", typeof(decimal), method => method
+                    .WithParameter<short>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<short>("value")))))
+                .AddMethod("IntDecimal", typeof(decimal), method => method
+                    .WithParameter<int>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<int>("value")))))
+                .AddMethod("LongDecimal", typeof(decimal), method => method
+                    .WithParameter<long>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<long>("value")))))
+                .AddMethod("FloatDecimal", typeof(decimal), method => method
+                    .WithParameter<float>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<float>("value")))))
+                .AddMethod("DoubleDecimal", typeof(decimal), method => method
+                    .WithParameter<double>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<double>("value"))))))
+            .Build();
+
+        instance = context.CreateInstance("NumericPromotions");
+        return instance.GetType();
+    }
+
+    private static Type CreateCompletionType(out object instance)
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Completion", type => type
+                .AddVoidMethod("ReturnFromTry", method => method
+                    .EmitsBody(body => body.Try(
+                        tryBody => tryBody.Return(),
+                        finallyBody: finallyBody => finallyBody.Evaluate(finallyBody.StaticCall(
+                            typeof(AdvancedRecorder),
+                            nameof(AdvancedRecorder.RecordFinally),
+                            Type.EmptyTypes)))))
+                .AddMethod("DefaultDate", typeof(DateTime), method => method
+                    .EmitsBody(body => body.Return(body.Default<DateTime>())))
+                .AddMethod("DefaultFromNull", typeof(DateTime), method => method
+                    .EmitsBody(body => body.Return(body.Constant(null!, typeof(DateTime)))))
+                .AddMethod("LongToDecimal", typeof(decimal), method => method
+                    .WithParameter<long>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<long>("value")))))
+                .AddMethod("FloatToDecimal", typeof(decimal), method => method
+                    .WithParameter<float>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<float>("value")))))
+                .AddMethod("DoubleToDecimal", typeof(decimal), method => method
+                    .WithParameter<double>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<double>("value")))))
+                .AddMethod("NoElse", typeof(int), method => method
+                    .WithParameter<bool>("condition")
+                    .EmitsBody(body =>
+                    {
+                        var result = body.DeclareLocal<int>("result");
+                        body.Assign(result, body.Constant(0));
+                        body.If(body.Parameter<bool>("condition"), whenTrue => whenTrue.Assign(result, whenTrue.Constant(1)));
+                        body.Return(result);
+                    })))
+            .Build();
+
+        instance = context.CreateInstance("Completion");
+        return instance.GetType();
+    }
+
+    private static Type CreateAdvancedType(Token token, out object instance)
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Advanced", type => type
+                .AddMethod("Helper", typeof(int), method => method
+                    .WithParameter<int>("value")
+                    .EmitsBody(body => body.Return(body.Add(body.Parameter<int>("value"), body.Constant(1)))))
+                .AddMethod("CallHelper", typeof(int), method => method
+                    .WithParameter<int>("value")
+                    .EmitsBody(body => body.Return(body.Call(body.Self(), "Helper", new[] { typeof(int) }, body.Parameter<int>("value")))))
+                .AddMethod("Construct", typeof(int), method => method
+                    .WithParameter<int>("value")
+                    .EmitsBody(body => body.Return(body.Property(body.New(typeof(ConstructorTarget), body.Parameter<int>("value")), nameof(ConstructorTarget.Value)))))
+                .AddMethod("Constant", typeof(Token), method => method
+                    .EmitsBody(body => body.Return(body.Constant(token, typeof(Token)))))
+                .AddMethod("CoalesceNullable", typeof(int), method => method
+                    .WithParameter<int?>("value")
+                    .EmitsBody(body => body.Return(body.Coalesce(body.Parameter<int?>("value"), body.Constant(9)))))
+                .AddMethod("UseValue", typeof(int), method => method
+                    .WithParameter<ValueProbe>("probe")
+                    .EmitsBody(body => body.Using(body.Parameter<ValueProbe>("probe"), "resource", (_, scope) => scope.Return(scope.Constant(6)))))
+                .AddMethod("UseReference", typeof(int), method => method
+                    .WithParameter<RefProbe>("probe")
+                    .EmitsBody(body => body.Using(body.Parameter<RefProbe>("probe"), "resource", (_, scope) => scope.Return(scope.Constant(7)))))
+                .AddMethod("TryFinally", typeof(int), method => method
+                    .EmitsBody(body => body.Try(
+                        tryBody => tryBody.Return(tryBody.Constant(8)),
+                        finallyBody: finallyBody => finallyBody.Evaluate(finallyBody.StaticCall(
+                            typeof(AdvancedRecorder),
+                            nameof(AdvancedRecorder.RecordFinally),
+                            Type.EmptyTypes)))))
+                .AddMethod("SwitchWithoutDefault", typeof(string), method => method
+                    .WithParameter<int>("value")
+                    .EmitsBody(body =>
+                    {
+                        var result = body.DeclareLocal<string>("result");
+                        body.Assign(result, body.Default<string>());
+                        body.Switch(body.Parameter<int>("value"), branches => branches.Case(1, branch => branch.Assign(result, branch.Constant("one"))));
+                        body.Return(result);
+                    }))
+                .AddMethod("LongArray", typeof(long), method => method
+                    .WithParameter<long>("value")
+                    .EmitsBody(body => CopyArrayValue<long>(body, body.Parameter<long>("value"))))
+                .AddMethod("FloatArray", typeof(float), method => method
+                    .WithParameter<float>("value")
+                    .EmitsBody(body => CopyArrayValue<float>(body, body.Parameter<float>("value"))))
+                .AddMethod("DoubleArray", typeof(double), method => method
+                    .WithParameter<double>("value")
+                    .EmitsBody(body => CopyArrayValue<double>(body, body.Parameter<double>("value"))))
+                .AddMethod("ShortArray", typeof(short), method => method
+                    .WithParameter<short>("value")
+                    .EmitsBody(body => CopyArrayValue<short>(body, body.Parameter<short>("value"))))
+                .AddMethod("ByteArray", typeof(byte), method => method
+                    .WithParameter<byte>("value")
+                    .EmitsBody(body => CopyArrayValue<byte>(body, body.Parameter<byte>("value"))))
+                .AddMethod("TokenArray", typeof(Token), method => method
+                    .WithParameter<Token>("value")
+                    .EmitsBody(body => CopyArrayValue<Token>(body, body.Parameter<Token>("value"))))
+                .AddMethod("DateArray", typeof(DateTime), method => method
+                    .WithParameter<DateTime>("value")
+                    .EmitsBody(body => CopyArrayValue<DateTime>(body, body.Parameter<DateTime>("value")))))
+            .Build();
+
+        instance = context.CreateInstance("Advanced");
+        return instance.GetType();
     }
 
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)

@@ -54,7 +54,71 @@ public sealed class CoreValueAndTypeFormCoverageTests
     }
 
     [Fact]
-    public void TypeForm_Builders_Create_Attributed_Structs_Enums_And_Records()
+    public void TypeForm_Builders_Create_Attributed_Structs()
+    {
+        var context = CreateTypeFormsContext();
+        var structType = context.GetClrType("GeneratedStruct");
+        var value = Activator.CreateInstance(structType)!;
+        structType.GetProperty("Value")!.SetValue(value, 7);
+        structType.GetField("Counter")!.SetValue(value, 9);
+
+        Assert.True(structType.IsValueType);
+        Assert.Contains(typeof(IMarker), structType.GetInterfaces());
+        Assert.Equal("struct", structType.GetCustomAttribute<ObsoleteAttribute>()!.Message);
+        Assert.Equal(7, structType.GetProperty("Value")!.GetValue(value));
+        Assert.Equal(9, structType.GetField("Counter")!.GetValue(value));
+        Assert.Equal(42, structType.GetMethod("Answer")!.Invoke(value, null));
+        structType.GetMethod("Noop")!.Invoke(value, null);
+    }
+
+    [Fact]
+    public void TypeForm_Builders_Create_Attributed_Enums()
+    {
+        var context = CreateTypeFormsContext();
+        var enumType = context.GetClrType("GeneratedEnum");
+
+        Assert.Equal(typeof(byte), Enum.GetUnderlyingType(enumType));
+        Assert.Equal(new[] { "None", "Ready" }, Enum.GetNames(enumType));
+        Assert.NotNull(enumType.GetCustomAttribute<SerializableAttribute>());
+        Assert.Equal("enum", enumType.GetCustomAttribute<ObsoleteAttribute>()!.Message);
+        Assert.Equal(typeof(long), Enum.GetUnderlyingType(context.GetClrType("RawEnum")));
+    }
+
+    [Fact]
+    public void TypeForm_Builders_Create_Records_With_Components_And_Attributes()
+    {
+        var context = CreateTypeFormsContext();
+        var emptyRecord = context.GetClrType("EmptyRecord");
+        var record = context.CreateInstance("GeneratedRecord");
+        var recordStruct = Activator.CreateInstance(context.GetClrType("GeneratedRecordStruct"))!;
+
+        Assert.NotNull(emptyRecord.GetCustomAttribute<RecordLikeAttribute>());
+        Assert.Contains(typeof(IMarker), record.GetType().GetInterfaces());
+        Assert.Equal("record", record.GetType().GetMethod("Label")!.Invoke(record, null));
+        Assert.Equal("record", record.GetType().GetCustomAttribute<ObsoleteAttribute>()!.Message);
+        Assert.Equal("struct", recordStruct.GetType().GetMethod("Label")!.Invoke(recordStruct, null));
+        Assert.Contains(typeof(IMarker), recordStruct.GetType().GetInterfaces());
+    }
+    [Fact]
+    public void TypeForm_Builders_Reject_Invalid_Interface_Enum_And_Attribute_Configuration()
+    {
+        Assert.Throws<ArgumentException>(() => new BeeAssemblyBuilder(NewAssemblyName())
+            .AddStruct("Invalid", builder => builder.Implements(typeof(string))));
+        Assert.Throws<ArgumentNullException>(() => new BeeAssemblyBuilder(NewAssemblyName())
+            .AddStruct("Invalid", builder => builder.Implements(null!)));
+        Assert.Throws<ArgumentNullException>(() => new BeeAssemblyBuilder(NewAssemblyName())
+            .AddStruct("Invalid", builder => builder.AddAttribute(null!)));
+        Assert.Throws<ArgumentException>(() => new BeeAssemblyBuilder(NewAssemblyName())
+            .AddEnum("Invalid", typeof(decimal), ClassAccessModifier.Public));
+        Assert.Throws<ArgumentException>(() => new BeeAssemblyBuilder(NewAssemblyName())
+            .AddEnum<int>("Invalid", enumBuilder => enumBuilder.AddValue("", 1)));
+        Assert.Throws<ArgumentNullException>(() => new BeeAssemblyBuilder(NewAssemblyName())
+            .AddEnum<int>("Invalid", enumBuilder => enumBuilder.AddValue("Value", null!)));
+        Assert.Throws<ArgumentNullException>(() => new BeeAssemblyBuilder(NewAssemblyName())
+            .AddEnum<int>("Invalid", enumBuilder => enumBuilder.AddAttribute(null!)));
+    }
+
+    private static IAssemblyContext CreateTypeFormsContext()
     {
         var context = new BeeAssemblyBuilder(NewAssemblyName())
             .EnableCache()
@@ -84,53 +148,7 @@ public sealed class CoreValueAndTypeFormCoverageTests
                 .AddMethod("Label", typeof(string), method => method.EmitsBody(body => body.Return(body.Constant("struct")))))
             .Build();
 
-        var structType = context.GetClrType("GeneratedStruct");
-        var structValue = Activator.CreateInstance(structType)!;
-        structType.GetProperty("Value")!.SetValue(structValue, 7);
-        structType.GetField("Counter")!.SetValue(structValue, 9);
-        Assert.True(structType.IsValueType);
-        Assert.Contains(typeof(IMarker), structType.GetInterfaces());
-        Assert.Equal("struct", structType.GetCustomAttribute<ObsoleteAttribute>()!.Message);
-        Assert.Equal(7, structType.GetProperty("Value")!.GetValue(structValue));
-        Assert.Equal(9, structType.GetField("Counter")!.GetValue(structValue));
-        Assert.Equal(42, structType.GetMethod("Answer")!.Invoke(structValue, null));
-        structType.GetMethod("Noop")!.Invoke(structValue, null);
-
-        var enumType = context.GetClrType("GeneratedEnum");
-        Assert.Equal(typeof(byte), Enum.GetUnderlyingType(enumType));
-        Assert.Equal(new[] { "None", "Ready" }, Enum.GetNames(enumType));
-        Assert.NotNull(enumType.GetCustomAttribute<SerializableAttribute>());
-        Assert.Equal("enum", enumType.GetCustomAttribute<ObsoleteAttribute>()!.Message);
-        Assert.Equal(typeof(long), Enum.GetUnderlyingType(context.GetClrType("RawEnum")));
-
-        var emptyRecord = context.GetClrType("EmptyRecord");
-        Assert.NotNull(emptyRecord.GetCustomAttribute<RecordLikeAttribute>());
-        var record = context.CreateInstance("GeneratedRecord");
-        Assert.Contains(typeof(IMarker), record.GetType().GetInterfaces());
-        Assert.Equal("record", record.GetType().GetMethod("Label")!.Invoke(record, null));
-        Assert.Equal("record", record.GetType().GetCustomAttribute<ObsoleteAttribute>()!.Message);
-        var recordStruct = Activator.CreateInstance(context.GetClrType("GeneratedRecordStruct"))!;
-        Assert.Equal("struct", recordStruct.GetType().GetMethod("Label")!.Invoke(recordStruct, null));
-        Assert.Contains(typeof(IMarker), recordStruct.GetType().GetInterfaces());
-    }
-
-    [Fact]
-    public void TypeForm_Builders_Reject_Invalid_Interface_Enum_And_Attribute_Configuration()
-    {
-        Assert.Throws<ArgumentException>(() => new BeeAssemblyBuilder(NewAssemblyName())
-            .AddStruct("Invalid", builder => builder.Implements(typeof(string))));
-        Assert.Throws<ArgumentNullException>(() => new BeeAssemblyBuilder(NewAssemblyName())
-            .AddStruct("Invalid", builder => builder.Implements(null!)));
-        Assert.Throws<ArgumentNullException>(() => new BeeAssemblyBuilder(NewAssemblyName())
-            .AddStruct("Invalid", builder => builder.AddAttribute(null!)));
-        Assert.Throws<ArgumentException>(() => new BeeAssemblyBuilder(NewAssemblyName())
-            .AddEnum("Invalid", typeof(decimal), ClassAccessModifier.Public));
-        Assert.Throws<ArgumentException>(() => new BeeAssemblyBuilder(NewAssemblyName())
-            .AddEnum<int>("Invalid", enumBuilder => enumBuilder.AddValue("", 1)));
-        Assert.Throws<ArgumentNullException>(() => new BeeAssemblyBuilder(NewAssemblyName())
-            .AddEnum<int>("Invalid", enumBuilder => enumBuilder.AddValue("Value", null!)));
-        Assert.Throws<ArgumentNullException>(() => new BeeAssemblyBuilder(NewAssemblyName())
-            .AddEnum<int>("Invalid", enumBuilder => enumBuilder.AddAttribute(null!)));
+        return context;
     }
 
     private static string NewAssemblyName()

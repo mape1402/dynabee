@@ -186,63 +186,62 @@ public sealed class ConfiguratorCoverageTests
     }
 
     [Fact]
-    public void MethodConfigurator_Rejects_Incompatible_Override_And_Interface_Contracts()
+    public void MethodConfigurator_Rejects_Invalid_Constructor_And_Null_Configuration()
     {
-        var overrideMethod = typeof(ValidationBase).GetMethod(nameof(ValidationBase.Transform))!;
-        var protectedOverrideMethod = typeof(ValidationBase).GetMethod("ProtectedTransform", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var interfaceMethod = typeof(IValidationContract).GetMethod(nameof(IValidationContract.Transform))!;
-        var plainMethod = typeof(ValidationBase).GetMethod(nameof(ValidationBase.Plain))!;
-        var unboundMethod = new DynamicMethod("Unbound", typeof(int), new[] { typeof(int) });
-
         Assert.Throws<ArgumentException>(() => new MethodConfigurator(" ", typeof(int), Array.Empty<(string Name, BeeType Type)>(), null, null, null, null, false, false, default, null));
         Assert.Throws<ArgumentNullException>(() => new MethodConfigurator("Value", typeof(int), null!, null, null, null, null, false, false, default, null));
         Assert.Throws<ArgumentNullException>(() => CreateMethodConfigurator().Configure(null!));
-
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(overrideMethod: overrideMethod), typeof(object)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(returnType: typeof(string), overrideMethod: overrideMethod), typeof(ValidationBase)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(parameters: Array.Empty<(string Name, BeeType Type)>(), overrideMethod: overrideMethod), typeof(ValidationBase)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(parameters: new[] { ("value", (BeeType)typeof(string)) }, overrideMethod: overrideMethod), typeof(ValidationBase)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(overrideMethod: protectedOverrideMethod, access: MethodAccessModifier.Public), typeof(ValidationBase)));
-
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(isStatic: true, interfaceMethod: interfaceMethod)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(interfaceMethod: plainMethod)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(interfaceMethod: unboundMethod)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(returnType: typeof(string), interfaceMethod: interfaceMethod)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(parameters: Array.Empty<(string Name, BeeType Type)>(), interfaceMethod: interfaceMethod)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(parameters: new[] { ("value", (BeeType)typeof(string)) }, interfaceMethod: interfaceMethod)));
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            CreateMethodConfigurator(interfaceMethod: interfaceMethod, access: MethodAccessModifier.Protected)));
-
-        var generic = new BeeGenericTypeParameterBuilder("T");
-        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
-            new MethodConfigurator(
-                "GenericOverride",
-                typeof(int),
-                Array.Empty<(string Name, BeeType Type)>(),
-                null,
-                null,
-                null,
-                null,
-                false,
-                false,
-                default,
-                null,
-                overrideMethod: overrideMethod,
-                genericParameters: new[] { generic }),
-            typeof(ValidationBase)));
     }
 
+    [Fact]
+    public void MethodConfigurator_Rejects_Incompatible_Override_Contracts()
+    {
+        var overrideMethod = typeof(ValidationBase).GetMethod(nameof(ValidationBase.Transform))!;
+        var protectedOverrideMethod = typeof(ValidationBase).GetMethod("ProtectedTransform", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(overrideMethod: overrideMethod), typeof(object)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(returnType: typeof(string), overrideMethod: overrideMethod), typeof(ValidationBase)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(parameters: Array.Empty<(string Name, BeeType Type)>(), overrideMethod: overrideMethod), typeof(ValidationBase)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(parameters: new[] { ("value", (BeeType)typeof(string)) }, overrideMethod: overrideMethod), typeof(ValidationBase)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(overrideMethod: protectedOverrideMethod, access: MethodAccessModifier.Public), typeof(ValidationBase)));
+    }
+
+    [Fact]
+    public void MethodConfigurator_Rejects_Incompatible_Interface_Contracts()
+    {
+        var interfaceMethod = typeof(IValidationContract).GetMethod(nameof(IValidationContract.Transform))!;
+        var plainMethod = typeof(ValidationBase).GetMethod(nameof(ValidationBase.Plain))!;
+        var unboundMethod = new DynamicMethod("Unbound", typeof(int), new[] { typeof(int) });
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(isStatic: true, interfaceMethod: interfaceMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(interfaceMethod: plainMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(interfaceMethod: unboundMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(returnType: typeof(string), interfaceMethod: interfaceMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(parameters: Array.Empty<(string Name, BeeType Type)>(), interfaceMethod: interfaceMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(parameters: new[] { ("value", (BeeType)typeof(string)) }, interfaceMethod: interfaceMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(CreateMethodConfigurator(interfaceMethod: interfaceMethod, access: MethodAccessModifier.Protected)));
+    }
+
+    [Fact]
+    public void MethodConfigurator_Rejects_Generic_Overrides()
+    {
+        var overrideMethod = typeof(ValidationBase).GetMethod(nameof(ValidationBase.Transform))!;
+        var generic = new BeeGenericTypeParameterBuilder("T");
+        var configurator = new MethodConfigurator(
+            "GenericOverride",
+            typeof(int),
+            Array.Empty<(string Name, BeeType Type)>(),
+            null,
+            null,
+            null,
+            null,
+            false,
+            false,
+            default,
+            null,
+            overrideMethod: overrideMethod,
+            genericParameters: new[] { generic });
+
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(configurator, typeof(ValidationBase)));
+    }
     [Fact]
     public void PropertyOverrides_Emit_Default_Bodies_For_Void_And_Reference_Accessors()
     {
@@ -464,72 +463,45 @@ public sealed class ConfiguratorCoverageTests
     }
 
     [Fact]
-    public void Direct_Configurators_Apply_Defaults_And_Forward_Base_Constructor_Arguments()
+    public void Direct_Configurators_Reject_Blank_Event_And_Interface_Names()
     {
         Assert.Throws<ArgumentException>(() => new EventConfigurator(" ", typeof(EventHandler), default, null, null));
         Assert.Throws<ArgumentException>(() => new InterfaceConfigurator(" ", default));
+    }
 
-        var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(NewAssemblyName()), AssemblyBuilderAccess.Run);
-        var module = assembly.DefineDynamicModule("DirectConfigurators");
-        var assemblyContext = new AssemblyContextBuilder("DirectConfigurators", assembly, module);
-        var members = (TypeContextBuilder)assemblyContext.AddTypeBuilder(
-            "DirectMembers",
-            module.DefineType("DirectMembers", TypeAttributes.Public, typeof(object)));
-        var forwarded = (TypeContextBuilder)assemblyContext.AddTypeBuilder(
-            "Forwarded",
-            module.DefineType("Forwarded", TypeAttributes.Public, typeof(ForwardedConstructorBase)));
-
-        new IndexerConfigurator(
-            "Item",
-            typeof(string),
-            typeof(int),
-            hasGetter: true,
-            hasSetter: true,
-            default,
-            default,
-            attributes: null,
-            metadata: null).Configure(members);
-        new EventConfigurator("Changed", typeof(EventHandler), default, attributes: null, metadata: null).Configure(members);
-        new ConstructorConfigurator(
-            new[] { ("value", (BeeType)typeof(string)) },
-            body: null,
-            baseConstructor: typeof(ForwardedConstructorBase).GetConstructor(new[] { typeof(string) })!,
-            baseConstructorArgumentNames: new[] { "value" }).Configure(forwarded);
-
-        new InterfaceConfigurator("IDirect", default)
-            .AddElementBuilder(new InterfaceMethodConfigurator(
-                "Run",
-                typeof(void),
-                Array.Empty<(string Name, BeeType Type)>(),
-                default,
-                attributes: null))
-            .AddElementBuilder(new InterfacePropertyConfigurator(
-                "Value",
-                typeof(int),
-                hasGetter: true,
-                hasSetter: true,
-                default,
-                default,
-                attributes: null))
-            .Configure(assemblyContext);
-        new EnumConfigurator("DirectEnum", typeof(int), default).AddValue("One", 1).Configure(assemblyContext);
-        new StructConfigurator("DirectStruct", default).Configure(assemblyContext);
-
-        var context = assemblyContext.Build();
+    [Fact]
+    public void Direct_Configurators_Emit_Indexers_And_Events()
+    {
+        var context = CreateDirectConfiguratorContext();
         var instance = Activator.CreateInstance(context.GetClrType("DirectMembers"))!;
         var item = instance.GetType().GetProperty("Item")!;
         item.SetValue(instance, 5, new object[] { "key" });
 
         Assert.Equal(5, item.GetValue(instance, new object[] { "key" }));
         Assert.True(instance.GetType().GetEvent("Changed")!.AddMethod!.IsPublic);
-        Assert.True(context.GetClrType("IDirect").GetMethod("Run")!.IsPublic);
-        Assert.True(context.GetClrType("IDirect").GetProperty("Value")!.GetMethod!.IsPublic);
-        Assert.True(context.GetClrType("IDirect").GetProperty("Value")!.SetMethod!.IsPublic);
-        Assert.True(context.GetClrType("DirectEnum").IsPublic);
-        Assert.True(context.GetClrType("DirectStruct").IsPublic);
-        Assert.Equal("forwarded", ((ForwardedConstructorBase)Activator.CreateInstance(context.GetClrType("Forwarded"), "forwarded")!).Value);
     }
 
+    [Fact]
+    public void Direct_Configurators_Emit_Public_Interface_Enum_And_Struct_Contracts()
+    {
+        var context = CreateDirectConfiguratorContext();
+        var contract = context.GetClrType("IDirect");
+
+        Assert.True(contract.GetMethod("Run")!.IsPublic);
+        Assert.True(contract.GetProperty("Value")!.GetMethod!.IsPublic);
+        Assert.True(contract.GetProperty("Value")!.SetMethod!.IsPublic);
+        Assert.True(context.GetClrType("DirectEnum").IsPublic);
+        Assert.True(context.GetClrType("DirectStruct").IsPublic);
+    }
+
+    [Fact]
+    public void Direct_Configurators_Forward_Base_Constructor_Arguments()
+    {
+        var context = CreateDirectConfiguratorContext();
+        var instance = (ForwardedConstructorBase)Activator.CreateInstance(context.GetClrType("Forwarded"), "forwarded")!;
+
+        Assert.Equal("forwarded", instance.Value);
+    }
     [Fact]
     public void Member_Configurators_Emit_Properties_Indexers_Fields_And_Events_With_Requested_Accessors()
     {
@@ -762,6 +734,59 @@ public sealed class ConfiguratorCoverageTests
         Assert.IsType<InvalidOperationException>(writeOnly.InnerException);
         Assert.False(toBoolean(0));
         Assert.True(toBoolean(1));
+    }
+
+    private static IAssemblyContext CreateDirectConfiguratorContext()
+    {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(NewAssemblyName()), AssemblyBuilderAccess.Run);
+        var module = assembly.DefineDynamicModule("DirectConfigurators");
+        var assemblyContext = new AssemblyContextBuilder("DirectConfigurators", assembly, module);
+        var members = (TypeContextBuilder)assemblyContext.AddTypeBuilder(
+            "DirectMembers",
+            module.DefineType("DirectMembers", TypeAttributes.Public, typeof(object)));
+        var forwarded = (TypeContextBuilder)assemblyContext.AddTypeBuilder(
+            "Forwarded",
+            module.DefineType("Forwarded", TypeAttributes.Public, typeof(ForwardedConstructorBase)));
+
+        new IndexerConfigurator(
+            "Item",
+            typeof(string),
+            typeof(int),
+            hasGetter: true,
+            hasSetter: true,
+            default,
+            default,
+            attributes: null,
+            metadata: null).Configure(members);
+        new EventConfigurator("Changed", typeof(EventHandler), default, attributes: null, metadata: null).Configure(members);
+        new ConstructorConfigurator(
+            new[] { ("value", (BeeType)typeof(string)) },
+            body: null,
+            baseConstructor: typeof(ForwardedConstructorBase).GetConstructor(new[] { typeof(string) })!,
+            baseConstructorArgumentNames: new[] { "value" }).Configure(forwarded);
+
+        new InterfaceConfigurator("IDirect", default)
+            .AddElementBuilder(new InterfaceMethodConfigurator(
+                "Run",
+                typeof(void),
+                Array.Empty<(string Name, BeeType Type)>(),
+                default,
+                attributes: null))
+            .AddElementBuilder(new InterfacePropertyConfigurator(
+                "Value",
+                typeof(int),
+                hasGetter: true,
+                hasSetter: true,
+                default,
+                default,
+                attributes: null))
+            .Configure(assemblyContext);
+        new EnumConfigurator("DirectEnum", typeof(int), default).AddValue("One", 1).Configure(assemblyContext);
+        new StructConfigurator("DirectStruct", default).Configure(assemblyContext);
+
+        var context = assemblyContext.Build();
+
+        return context;
     }
 
     private static void BuildInvalid(Action<BeeClassBuilder> configure)
