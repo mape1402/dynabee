@@ -9,6 +9,25 @@ using DynaBee.Infrastructure.ContextBuilders;
 public sealed class MethodBodyAdvancedCoverageTests
 {
     [Fact]
+    public void Body_Builder_Supports_Parameterless_Construction_Calls_And_One_Sided_Conditionals()
+    {
+        var toString = typeof(System.Text.StringBuilder).GetMethod(nameof(object.ToString), Type.EmptyTypes)!;
+        var context = new BeeAssemblyBuilder($"DynaBee.Tests.BodyEdges.{Guid.NewGuid():N}")
+            .AddClass("Edges", type => type
+                .AddMethod("Text", typeof(string), method => method.EmitsBody(body =>
+                    body.Return(body.Call(body.New<System.Text.StringBuilder>(), toString))))
+                .AddVoidMethod("OnlyTrue", method => method
+                    .WithParameter<bool>("enabled")
+                    .EmitsBody(body => body.If(body.Parameter<bool>("enabled"), _ => { }))))
+            .Build();
+        var instance = context.CreateInstance("Edges");
+        var type = instance.GetType();
+
+        Assert.Equal(string.Empty, type.GetMethod("Text")!.Invoke(instance, null));
+        type.GetMethod("OnlyTrue")!.Invoke(instance, new object[] { true });
+        type.GetMethod("OnlyTrue")!.Invoke(instance, new object[] { false });
+    }
+    [Fact]
     public void GeneratedBodies_Execute_Advanced_Construction_Control_Flow_And_Disposal()
     {
         var token = new Token("constant");
