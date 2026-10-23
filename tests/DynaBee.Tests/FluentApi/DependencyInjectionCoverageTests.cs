@@ -170,6 +170,65 @@ public sealed class DependencyInjectionCoverageTests
         Assert.NotNull(builder.Build());
     }
 
+    [Fact]
+    public void Di_Registration_Overloads_Validate_Service_Collections_And_Expose_Default_Concrete_Registrations()
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("PlainService", type => type.AddAutoProperty<int>("Value"))
+            .Build();
+        var registry = new AssemblyContextRegistry(NewAssemblyName());
+        var snapshotProvider = new AssemblyContextProvider(registry);
+        var profile = new CoverageProfile(registry.AssemblyName);
+
+        Assert.Throws<ArgumentNullException>(() => DynaBeeServiceCollectionExtensions.AddDynaBeeProfiles(null!));
+        Assert.Throws<ArgumentNullException>(() => DynaBeeServiceCollectionExtensions.AddDynaBeeRegistry(null!, "Registry"));
+        Assert.Throws<ArgumentNullException>(() => DynaBeeServiceCollectionExtensions.AddDynaBee(null!, context));
+        Assert.Throws<ArgumentNullException>(() => DynaBeeServiceCollectionExtensions.AddDynaBee(null!, context, _ => { }));
+        Assert.Throws<ArgumentNullException>(() => DynaBeeServiceCollectionExtensions.AddDynaBee(null!, snapshotProvider));
+        Assert.Throws<ArgumentNullException>(() => DynaBeeServiceCollectionExtensions.AddDynaBee(null!, snapshotProvider, _ => { }));
+        Assert.Throws<ArgumentNullException>(() => AssemblyContextRegistryExtensions.AddProfile(null!, profile));
+        Assert.Throws<ArgumentNullException>(() => AssemblyContextRegistryExtensions.AddProfile<CoverageProfile>(null!));
+
+        IAssemblyContextRegistry profileRegistry = new AssemblyContextRegistry(registry.AssemblyName);
+        Assert.Same(profileRegistry, AssemblyContextRegistryExtensions.AddProfile(profileRegistry, profile));
+        Assert.Throws<ArgumentNullException>(() => DynaBeeProfileDiscoveryExtensions.AddProfilesFromAssemblies(null!, typeof(DependencyInjectionCoverageTests).Assembly));
+
+        var services = new ServiceCollection().AddDynaBee(context, ServiceLifetime.Singleton);
+        var provider = services.BuildServiceProvider();
+        var implementationType = context.GetClrType("PlainService");
+
+        Assert.Same(provider.GetRequiredService(implementationType), provider.GetRequiredService(implementationType));
+        Assert.Same(context, provider.GetRequiredService<IAssemblyContext>());
+    }
+
+    [Fact]
+    public void Registry_And_Provider_Overloads_Register_Current_Snapshots_And_Rule_Service_Types()
+    {
+        var registry = new AssemblyContextRegistry(NewAssemblyName());
+        registry.Configure(builder => builder
+            .AddClass("RegisteredService", type => type
+                .Implements<ICoverageService>()
+                .AddMethod(nameof(ICoverageService.GetValue), typeof(string), method => method
+                    .EmitsExpression((System.Linq.Expressions.Expression<Func<string>>)(() => "registered")))));
+        var snapshot = registry.BuildSnapshot();
+        var snapshotProvider = new AssemblyContextProvider(registry, snapshot);
+
+        var registryServices = new ServiceCollection()
+            .AddDynaBeeRegistry(registry.AssemblyName, configureRegistry: null, ServiceLifetime.Scoped)
+            .BuildServiceProvider();
+        Assert.NotNull(registryServices.GetRequiredService<IAssemblyContextRegistry>());
+
+        var services = new ServiceCollection()
+            .AddDynaBee(snapshotProvider, options => options.Register(rule => rule
+                .ForType("RegisteredService")
+                .As<ICoverageService>()
+                .WithLifetime(ServiceLifetime.Singleton)))
+            .BuildServiceProvider();
+
+        Assert.Equal("registered", services.GetRequiredService<ICoverageService>().GetValue());
+        Assert.Same(services.GetRequiredService<ICoverageService>(), services.GetRequiredService<ICoverageService>());
+    }
+
     private static string NewAssemblyName()
         => $"DynaBee.Tests.DiCoverage.{Guid.NewGuid():N}";
 
