@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [v1.5.0] - 2026-10-23
 
 ### Added
 - Added generation-plan validation with structured diagnostics, stable codes, and pre-emission failure through `DynaBeeGenerationPlan.Validate()`.
@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Generation plans now retain method parameter signatures for validation, diagnostics, and source export.
 - Plan execution and extension registration are DI-first; no static registration state is required.
+- Expanded the regression suite with focused generated-body, configurator, type-form, dispatch, and diagnostics scenarios while maintaining at least 99% line and branch coverage.
 
 ## [v1.4.0] - 2026-08-07
 
