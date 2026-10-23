@@ -214,6 +214,32 @@ public sealed class BodyAndExpressionCoverageTests
     }
 
     [Fact]
+    public void MethodBodyBuilder_Can_Access_Inherited_Fields_And_Properties_While_The_Type_Is_Being_Generated()
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("DerivedMembers", type => type
+                .Inherits<InheritedMembers>()
+                .AddMethod("StoreAndRead", typeof(int), method => method
+                    .WithParameter<int>("value")
+                    .EmitsBody(body =>
+                    {
+                        var value = body.Parameter<int>("value");
+                        body.Assign(body.Property(body.Self(), nameof(InheritedMembers.Value)), value);
+                        body.Assign(body.Field(body.Self(), nameof(InheritedMembers.Field)), body.Add(value, body.Constant(1)));
+                        body.Return(body.Add(
+                            body.Property(body.Self(), nameof(InheritedMembers.Value)),
+                            body.Field(body.Self(), nameof(InheritedMembers.Field))));
+                    })))
+            .Build();
+
+        var instance = (InheritedMembers)context.CreateInstance("DerivedMembers");
+
+        Assert.Equal(13, context.GetClrType("DerivedMembers").GetMethod("StoreAndRead")!.Invoke(instance, new object[] { 6 }));
+        Assert.Equal(6, instance.Value);
+        Assert.Equal(7, instance.Field);
+    }
+
+    [Fact]
     public void Expression_Emitter_Supports_Operators_Members_Construction_And_Control_Flow()
     {
         var context = new BeeAssemblyBuilder(NewAssemblyName())
@@ -405,5 +431,12 @@ public sealed class BodyAndExpressionCoverageTests
         public int Number;
 
         public int Property { get; set; }
+    }
+
+    public class InheritedMembers
+    {
+        public int Field;
+
+        public int Value { get; set; }
     }
 }

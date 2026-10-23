@@ -114,6 +114,47 @@ public sealed class InvokerCoverageTests
         Assert.Equal(first.GetHashCode(), same.GetHashCode());
     }
 
+    [Fact]
+    public void Invoker_Runtime_Validation_And_Dispatch_Adapters_Handle_Every_Supported_Result_Shape()
+    {
+        var context = CreateContext();
+        var instance = context.CreateInstance("Dispatch");
+        var nullableInvoker = context.CreateMethodInvoker("Dispatch", "Nullable", new[] { typeof(int?) });
+        var voidInvoker = context.CreateMethodInvoker("Dispatch", "Void", new[] { typeof(string) });
+
+        Assert.Equal("none", nullableInvoker.Invoke(instance, new object[] { null! }));
+        Assert.Null(voidInvoker.Invoke(instance, new object[] { "recorded" }));
+        Assert.Throws<ArgumentNullException>(() => nullableInvoker.Invoke(instance, null!));
+        Assert.Contains("Argument count mismatch", Assert.Throws<InvalidOperationException>(() => nullableInvoker.Invoke(instance, Array.Empty<object>())).Message);
+        Assert.Contains("cannot be assigned", Assert.Throws<InvalidOperationException>(() => nullableInvoker.Invoke(instance, new object[] { "wrong" })).Message);
+        Assert.Contains("Target instance cannot be null", Assert.Throws<InvalidOperationException>(() => nullableInvoker.Invoke(null!, new object[] { null! })).Message);
+        Assert.Contains("not assignable", Assert.Throws<InvalidOperationException>(() => nullableInvoker.Invoke(new object(), new object[] { null! })).Message);
+
+        var virtualMethod = typeof(DispatchTarget).GetMethod(nameof(DispatchTarget.VirtualValue))!;
+        var voidMethod = typeof(DispatchTarget).GetMethod(nameof(DispatchTarget.Record))!;
+        var virtualDispatch = DynaBeeMethodDispatchFactory.Create(typeof(DispatchTarget), virtualMethod);
+        var voidDispatch = DynaBeeMethodDispatchFactory.Create(typeof(DispatchTarget), voidMethod);
+        var target = new DispatchTarget();
+
+        Assert.Equal(4, virtualDispatch(target, new object[] { 3 }));
+        Assert.Null(voidDispatch(target, new object[] { "done" }));
+        Assert.Equal("done", target.LastValue);
+
+        var adapter = new DynaBeeObjectMethodAdapter(
+            "Coverage",
+            "Dispatch",
+            "Fail",
+            new[] { typeof(int) },
+            typeof(void),
+            _ => throw new InvalidCastException("invalid"));
+        Assert.Throws<ArgumentNullException>(() => adapter.Invoke(null!));
+        Assert.Contains("Argument count mismatch", Assert.Throws<InvalidOperationException>(() => adapter.Invoke(Array.Empty<object>())).Message);
+        Assert.Contains("cannot be assigned", Assert.Throws<InvalidOperationException>(() => adapter.Invoke(new object[] { "wrong" })).Message);
+
+        Assert.Equal(string.Empty, AssemblyContextInvokerExtensions.FormatTypes(null!));
+        Assert.Equal("<null>, System.Int32", AssemblyContextInvokerExtensions.FormatTypes(new Type[] { null!, typeof(int) }));
+    }
+
     private static IAssemblyContext CreateContext()
     {
         DispatchRecorder.LastValue = null;
@@ -155,6 +196,17 @@ public sealed class InvokerCoverageTests
         public static string LastValue { get; set; }
 
         public static void Record(string value)
+            => LastValue = value;
+    }
+
+    public class DispatchTarget
+    {
+        public string LastValue { get; private set; }
+
+        public virtual int VirtualValue(int value)
+            => value + 1;
+
+        public void Record(string value)
             => LastValue = value;
     }
 }

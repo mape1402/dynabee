@@ -5,6 +5,7 @@ using System.Reflection.Emit;
 using DynaBee.FluentApi;
 using DynaBee.Infrastructure;
 using DynaBee.Infrastructure.Configurators;
+using DynaBee.Infrastructure.ContextBuilders;
 
 public sealed class ConfiguratorCoverageTests
 {
@@ -121,6 +122,42 @@ public sealed class ConfiguratorCoverageTests
         Assert.Equal(MethodAccessModifier.Private, MethodConfigurator.GetAccessModifier(GetMethod("Private")));
     }
 
+    [Fact]
+    public void MethodConfigurator_Rejects_Incompatible_Override_And_Interface_Contracts()
+    {
+        var overrideMethod = typeof(ValidationBase).GetMethod(nameof(ValidationBase.Transform))!;
+        var protectedOverrideMethod = typeof(ValidationBase).GetMethod("ProtectedTransform", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var interfaceMethod = typeof(IValidationContract).GetMethod(nameof(IValidationContract.Transform))!;
+        var plainMethod = typeof(ValidationBase).GetMethod(nameof(ValidationBase.Plain))!;
+
+        Assert.Throws<ArgumentNullException>(() => new MethodConfigurator("Value", typeof(int), null!, null, null, null, null, false, false, default, null));
+        Assert.Throws<ArgumentNullException>(() => CreateMethodConfigurator().Configure(null!));
+
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(overrideMethod: overrideMethod), typeof(object)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(returnType: typeof(string), overrideMethod: overrideMethod), typeof(ValidationBase)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(parameters: Array.Empty<(string Name, BeeType Type)>(), overrideMethod: overrideMethod), typeof(ValidationBase)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(parameters: new[] { ("value", (BeeType)typeof(string)) }, overrideMethod: overrideMethod), typeof(ValidationBase)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(overrideMethod: protectedOverrideMethod, access: MethodAccessModifier.Public), typeof(ValidationBase)));
+
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(isStatic: true, interfaceMethod: interfaceMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(interfaceMethod: plainMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(returnType: typeof(string), interfaceMethod: interfaceMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(parameters: Array.Empty<(string Name, BeeType Type)>(), interfaceMethod: interfaceMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(parameters: new[] { ("value", (BeeType)typeof(string)) }, interfaceMethod: interfaceMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(interfaceMethod: interfaceMethod, access: MethodAccessModifier.Protected)));
+    }
+
     private static void BuildInvalid(Action<BeeClassBuilder> configure)
         => new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("Invalid", type =>
@@ -132,6 +169,40 @@ public sealed class ConfiguratorCoverageTests
 
     private static MethodInfo GetMethod(string name)
         => typeof(AccessBase).GetMethod(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+
+    private static MethodConfigurator CreateMethodConfigurator(
+        Type returnType = null,
+        IReadOnlyList<(string Name, BeeType Type)> parameters = null,
+        bool isStatic = false,
+        MethodAccessModifier access = default,
+        MethodInfo overrideMethod = null,
+        MethodInfo interfaceMethod = null)
+        => new(
+            "Transform",
+            returnType ?? typeof(int),
+            parameters ?? new[] { ("value", (BeeType)typeof(int)) },
+            null,
+            null,
+            null,
+            null,
+            isStatic,
+            false,
+            access,
+            null,
+            overrideMethod: overrideMethod,
+            interfaceMethod: interfaceMethod);
+
+    private static void ConfigureAndBuild(MethodConfigurator configurator, Type baseType = null)
+    {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(NewAssemblyName()), AssemblyBuilderAccess.Run);
+        var module = assembly.DefineDynamicModule("Validation");
+        var assemblyContext = new AssemblyContextBuilder("Validation", assembly, module);
+        var type = module.DefineType("Generated", TypeAttributes.Public, baseType ?? typeof(object));
+        var typeContext = (TypeContextBuilder)assemblyContext.AddTypeBuilder("Generated", type);
+
+        configurator.Configure(typeContext);
+        typeContext.Build();
+    }
 
     private static string NewAssemblyName()
         => $"DynaBee.Tests.Configurators.{Guid.NewGuid():N}";
@@ -166,5 +237,22 @@ public sealed class ConfiguratorCoverageTests
         private protected void PrivateProtected() { }
 
         private void Private() { }
+    }
+
+    public class ValidationBase
+    {
+        public virtual int Transform(int value)
+            => value;
+
+        public int Plain(int value)
+            => value;
+
+        protected virtual int ProtectedTransform(int value)
+            => value;
+    }
+
+    public interface IValidationContract
+    {
+        int Transform(int value);
     }
 }
