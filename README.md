@@ -1,5 +1,13 @@
 # DynaBee
 
+[![Build](https://github.com/mape1402/dynabee/actions/workflows/build-and-release.yml/badge.svg?branch=main)](https://github.com/mape1402/dynabee/actions/workflows/build-and-release.yml)
+[![NuGet](https://img.shields.io/nuget/v/DynaBee?logo=nuget)](https://www.nuget.org/packages/DynaBee)
+[![Downloads](https://img.shields.io/nuget/dt/DynaBee?logo=nuget)](https://www.nuget.org/packages/DynaBee)
+[![Coverage](https://img.shields.io/badge/coverage-99.81%25-brightgreen)](https://github.com/mape1402/dynabee)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+![DynaBee bee generating dynamic types, methods, and expression trees](docs/images/dynabee-hero.png)
+
 **DynaBee** is a lightweight .NET library that uses `Reflection.Emit` to generate dynamic types at runtime.
 
 It is designed for scenarios where you need to build classes, methods, properties, and contracts programmatically, with a fluent API that is simple to use and easy to extend.
