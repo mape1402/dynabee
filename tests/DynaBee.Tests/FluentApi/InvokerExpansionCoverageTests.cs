@@ -1,7 +1,10 @@
 namespace DynaBee.Tests.FluentApi;
 
+using System.Reflection;
+using System.Reflection.Emit;
 using DynaBee.FluentApi;
 using DynaBee.FluentApi.Invocation;
+using DynaBee.Infrastructure.Contexts;
 
 public sealed class InvokerExpansionCoverageTests
 {
@@ -101,6 +104,27 @@ public sealed class InvokerExpansionCoverageTests
     }
 
     [Fact]
+    public void Factory_Delegates_Reject_Ambiguous_Il_Constructor_Identities()
+    {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName($"DynaBee.Tests.ConstructorAmbiguity.{Guid.NewGuid():N}"),
+            AssemblyBuilderAccess.Run);
+        var typeBuilder = assembly.DefineDynamicModule("Types").DefineType("Ambiguous", TypeAttributes.Public);
+        DefineConstructor(typeBuilder);
+        DefineConstructor(typeBuilder);
+        var type = typeBuilder.CreateTypeInfo()!.AsType();
+        var context = new AssemblyContext(
+            assembly.GetName().Name!,
+            assembly,
+            new[] { new TypeContext("Ambiguous", type, Array.Empty<IElementContext>()) });
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            context.CreateFactoryDelegate<Func<int, object>>("Ambiguous", new[] { typeof(int) }));
+
+        Assert.Contains("More than one constructor matches", exception.Message);
+    }
+
+    [Fact]
     public void Delegate_Factories_Validate_Generated_Constructor_And_Method_Identity_Inputs()
     {
         var context = new BeeAssemblyBuilder($"DynaBee.Tests.InvokerConstructors.{Guid.NewGuid():N}")
@@ -166,4 +190,16 @@ public sealed class InvokerExpansionCoverageTests
                     .WithParameter<int>("third")
                     .EmitsBody(body => body.Return(body.Add(body.Add(body.Parameter<int>("first"), body.Parameter<int>("second")), body.Parameter<int>("third"))))))
             .Build();
+
+    private static void DefineConstructor(TypeBuilder typeBuilder)
+    {
+        var constructor = typeBuilder.DefineConstructor(
+            MethodAttributes.Public,
+            CallingConventions.Standard,
+            new[] { typeof(int) });
+        var il = constructor.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Call, typeof(object).GetConstructor(Type.EmptyTypes)!);
+        il.Emit(OpCodes.Ret);
+    }
 }
