@@ -7,6 +7,7 @@ using DynaBee.FluentApi.DependencyInjection;
 using DynaBee.FluentApi.Extensions;
 using DynaBee.FluentApi.Generation;
 using DynaBee.Infrastructure;
+using DynaBee.Infrastructure.Contexts;
 
 public sealed class PlanAndDiagnosticsCoverageTests
 {
@@ -184,6 +185,45 @@ public sealed class PlanAndDiagnosticsCoverageTests
         Assert.Contains("get:-", writeOnly.Signature);
         Assert.Contains("set:Public", writeOnly.Signature);
         Assert.All(overloads, overload => Assert.Empty(overload.MetadataKeys));
+    }
+
+    [Fact]
+    public void Diagnostics_Use_Safe_Names_For_Open_Generic_Type_Contexts()
+    {
+        var genericParameter = typeof(List<>).GetGenericArguments().Single();
+        var context = new AssemblyContext(
+            "Diagnostics",
+            typeof(PlanAndDiagnosticsCoverageTests).Assembly,
+            new[] { new TypeContext("GenericParameter", genericParameter, Array.Empty<IElementContext>()) });
+
+        var type = Assert.Single(context.GetDiagnostics().Types);
+
+        Assert.Equal("T", type.FullName);
+        Assert.Equal("Class", type.Kind);
+    }
+
+    [Fact]
+    public void Generation_Plan_Validation_Handles_Malformed_Extension_Descriptors()
+    {
+        var plan = new DynaBeeGenerationPlan("DynaBee.Tests.MalformedExtensionPlan");
+        var classes = (List<DynaBeeGeneratedClassPlan>)plan.Classes;
+        classes.Add(new DynaBeeGeneratedClassPlan(
+            "ExtensionOutput",
+            baseType: null,
+            interfaces: Array.Empty<Type>(),
+            serviceTypes: Array.Empty<Type>(),
+            registerAsConcrete: null,
+            metadata: new Dictionary<string, object>(),
+            members: new[]
+            {
+                new DynaBeeGeneratedMemberPlan("Format", ElementType.Method, typeof(void), new Type[] { null! }),
+                new DynaBeeGeneratedMemberPlan("Format", ElementType.Method, typeof(void), new Type[] { null! })
+            },
+            operations: Array.Empty<Action<BeeClassBuilder>>()));
+
+        var validation = plan.Validate();
+
+        Assert.Contains(validation.Diagnostics, diagnostic => diagnostic.Code == "DBP032");
     }
 
     [Fact]

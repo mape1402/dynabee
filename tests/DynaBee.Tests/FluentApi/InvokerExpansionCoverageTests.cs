@@ -86,6 +86,21 @@ public sealed class InvokerExpansionCoverageTests
     }
 
     [Fact]
+    public void Invokers_Reject_Ambiguous_Il_Method_Identities()
+    {
+        var context = new BeeAssemblyBuilder($"DynaBee.Tests.InvokerAmbiguity.{Guid.NewGuid():N}")
+            .AddClass("Ambiguous", type => type
+                .AddMethod("Format", typeof(string))
+                .AddMethod("Format", typeof(object)))
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            context.CreateMethodInvoker("Ambiguous", "Format", Type.EmptyTypes));
+
+        Assert.Contains("More than one overload matches", exception.Message);
+    }
+
+    [Fact]
     public void Delegate_Factories_Validate_Generated_Constructor_And_Method_Identity_Inputs()
     {
         var context = new BeeAssemblyBuilder($"DynaBee.Tests.InvokerConstructors.{Guid.NewGuid():N}")
