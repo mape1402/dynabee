@@ -280,6 +280,23 @@ public sealed class ConfiguratorCoverageTests
     }
 
     [Fact]
+    public void ConstructorConfigurator_Allows_An_Explicit_Il_Body()
+    {
+        var objectConstructor = typeof(object).GetConstructor(Type.EmptyTypes)!;
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("ExplicitConstructor", type => type
+                .AddConstructor(constructor => constructor.Emits(il =>
+                {
+                    il.Emit(OpCodes.Ldarg_0);
+                    il.Emit(OpCodes.Call, objectConstructor);
+                    il.Emit(OpCodes.Ret);
+                })))
+            .Build();
+
+        Assert.NotNull(context.CreateInstance("ExplicitConstructor"));
+    }
+
+    [Fact]
     public void Dependency_Constructors_And_Interface_Configurators_Validate_And_Emit_Their_Contracts()
     {
         var dependencyConfigurator = new DependencyConstructorConfigurator(
