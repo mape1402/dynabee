@@ -456,6 +456,109 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.Equal(0, overridden.GetType().GetMethod("Store")!.Invoke(overridden, new object[] { 9 }));
     }
 
+    [Fact]
+    public void GeneratedBodies_Apply_Numeric_Promotions_And_Nullable_Conversions()
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("NumericPromotions", type => type
+                .AddMethod("FloatLess", typeof(bool), method => method
+                    .WithParameter<float>("left")
+                    .WithParameter<int>("right")
+                    .EmitsBody(body => body.Return(body.LessThan(body.Parameter<float>("left"), body.Parameter<int>("right")))))
+                .AddMethod("LongLess", typeof(bool), method => method
+                    .WithParameter<long>("left")
+                    .WithParameter<int>("right")
+                    .EmitsBody(body => body.Return(body.LessThan(body.Parameter<long>("left"), body.Parameter<int>("right")))))
+                .AddMethod("DoubleDivide", typeof(double), method => method
+                    .WithParameter<double>("left")
+                    .WithParameter<int>("right")
+                    .EmitsBody(body => body.Return(body.Divide(body.Parameter<double>("left"), body.Parameter<int>("right")))))
+                .AddMethod("NullableToNullable", typeof(long?), method => method
+                    .WithParameter<int?>("value")
+                    .EmitsBody(body => body.Return(body.Convert<long?>(body.Parameter<int?>("value")))))
+                .AddMethod("ByteDecimal", typeof(decimal), method => method
+                    .WithParameter<byte>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<byte>("value")))))
+                .AddMethod("ShortDecimal", typeof(decimal), method => method
+                    .WithParameter<short>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<short>("value")))))
+                .AddMethod("IntDecimal", typeof(decimal), method => method
+                    .WithParameter<int>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<int>("value")))))
+                .AddMethod("LongDecimal", typeof(decimal), method => method
+                    .WithParameter<long>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<long>("value")))))
+                .AddMethod("FloatDecimal", typeof(decimal), method => method
+                    .WithParameter<float>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<float>("value")))))
+                .AddMethod("DoubleDecimal", typeof(decimal), method => method
+                    .WithParameter<double>("value")
+                    .EmitsBody(body => body.Return(body.Convert<decimal>(body.Parameter<double>("value"))))))
+            .Build();
+        var instance = context.CreateInstance("NumericPromotions");
+        var type = instance.GetType();
+
+        Assert.True((bool)type.GetMethod("FloatLess")!.Invoke(instance, new object[] { 1.5f, 2 })!);
+        Assert.True((bool)type.GetMethod("LongLess")!.Invoke(instance, new object[] { 1L, 2 })!);
+        Assert.Equal(2.5d, type.GetMethod("DoubleDivide")!.Invoke(instance, new object[] { 5d, 2 }));
+        Assert.Equal(4L, type.GetMethod("NullableToNullable")!.Invoke(instance, new object[] { 4 }));
+        Assert.Null(type.GetMethod("NullableToNullable")!.Invoke(instance, new object[] { null! }));
+        Assert.Equal(1m, type.GetMethod("ByteDecimal")!.Invoke(instance, new object[] { (byte)1 }));
+        Assert.Equal(2m, type.GetMethod("ShortDecimal")!.Invoke(instance, new object[] { (short)2 }));
+        Assert.Equal(3m, type.GetMethod("IntDecimal")!.Invoke(instance, new object[] { 3 }));
+        Assert.Equal(4m, type.GetMethod("LongDecimal")!.Invoke(instance, new object[] { 4L }));
+        Assert.Equal(5m, type.GetMethod("FloatDecimal")!.Invoke(instance, new object[] { 5f }));
+        Assert.Equal(6m, type.GetMethod("DoubleDecimal")!.Invoke(instance, new object[] { 6d }));
+
+        Assert.True(BeeIlConversions.CanConvert(typeof(int?), typeof(long?)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(byte), typeof(decimal)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(short), typeof(decimal)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int), typeof(decimal)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(long), typeof(decimal)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(float), typeof(decimal)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(double), typeof(decimal)));
+    }
+
+    [Fact]
+    public void MethodBodyBuilder_Handles_Optional_Arguments_Ambiguous_Members_And_Inherited_TypeBuilder_Members()
+    {
+        var builder = CreateBody(("item", typeof(HiddenMethodDerived), 0));
+        var noArgumentInstanceMethod = typeof(System.Text.StringBuilder).GetMethod(nameof(System.Text.StringBuilder.ToString), Type.EmptyTypes)!;
+        var noArgumentStaticMethod = typeof(Guid).GetMethod(nameof(Guid.NewGuid), Type.EmptyTypes)!;
+        var switchCases = new BeeSwitchBuilder();
+
+        Assert.Equal(typeof(System.Text.StringBuilder), builder.New(typeof(System.Text.StringBuilder), null!).Type);
+        Assert.Equal(typeof(string), builder.Call(builder.New<System.Text.StringBuilder>(), noArgumentInstanceMethod, null!).Type);
+        Assert.Equal(typeof(Guid), builder.StaticCall(noArgumentStaticMethod, null!).Type);
+        builder.If(builder.Constant(true), _ => { }, _ => { });
+        switchCases.Case(null, _ => { });
+        Assert.Throws<InvalidOperationException>(() => switchCases.Case(null, _ => { }));
+        Assert.Throws<ArgumentNullException>(() => new BeeConstantExpression(1, null!));
+        Assert.Throws<ArgumentNullException>(() => new BeeNewExpression(typeof(System.Text.StringBuilder), null!));
+        Assert.Throws<AmbiguousMatchException>(() => builder.Call(
+            builder.Parameter<HiddenMethodDerived>("item"),
+            nameof(HiddenMethodDerived.Format),
+            new[] { typeof(int) },
+            builder.Constant(1)));
+
+        var dynamicAssembly = AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName($"DynaBee.Tests.InheritedMembers.{Guid.NewGuid():N}"),
+            AssemblyBuilderAccess.Run);
+        var module = dynamicAssembly.DefineDynamicModule("Inherited");
+        var assemblyContext = new AssemblyContextBuilder("Inherited", dynamicAssembly, module);
+        var typeBuilder = module.DefineType("Generated", TypeAttributes.Public, typeof(InheritedTypeBuilderBase));
+        var typeContext = (TypeContextBuilder)assemblyContext.AddTypeBuilder("Generated", typeBuilder);
+        var inheritedBody = new BeeMethodBodyBuilder(
+            typeBuilder.DefineMethod("UseInherited", MethodAttributes.Public, typeof(void), Type.EmptyTypes).GetILGenerator(),
+            typeof(void),
+            Array.Empty<(string Name, Type Type, int ArgumentIndex)>(),
+            typeBuilder,
+            typeContext);
+
+        Assert.Equal(typeof(int), inheritedBody.Property(inheritedBody.Self(), nameof(InheritedTypeBuilderBase.Value)).Type);
+        Assert.Equal(typeof(int), inheritedBody.Field(inheritedBody.Self(), nameof(InheritedTypeBuilderBase.Counter)).Type);
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");
@@ -578,6 +681,25 @@ public sealed class MethodBodyAdvancedCoverageTests
     public class VirtualPropertyBase
     {
         public virtual int Value { get; set; }
+    }
+
+    public class HiddenMethodBase
+    {
+        public string Format(int value)
+            => value.ToString();
+    }
+
+    public class HiddenMethodDerived : HiddenMethodBase
+    {
+        public new string Format(int value)
+            => $"{value}";
+    }
+
+    public class InheritedTypeBuilderBase
+    {
+        public int Counter;
+
+        public int Value { get; set; }
     }
 
     public sealed class AmbiguousIndexer : AmbiguousIndexerBase
