@@ -157,6 +157,24 @@ public sealed class ConfiguratorCoverageTests
             CreateMethodConfigurator(parameters: new[] { ("value", (BeeType)typeof(string)) }, interfaceMethod: interfaceMethod)));
         Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
             CreateMethodConfigurator(interfaceMethod: interfaceMethod, access: MethodAccessModifier.Protected)));
+
+        var generic = new BeeGenericTypeParameterBuilder("T");
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            new MethodConfigurator(
+                "GenericOverride",
+                typeof(int),
+                Array.Empty<(string Name, BeeType Type)>(),
+                null,
+                null,
+                null,
+                null,
+                false,
+                false,
+                default,
+                null,
+                overrideMethod: overrideMethod,
+                genericParameters: new[] { generic }),
+            typeof(ValidationBase)));
     }
 
     [Fact]
