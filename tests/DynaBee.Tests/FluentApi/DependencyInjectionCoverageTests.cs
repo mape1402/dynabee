@@ -172,6 +172,24 @@ public sealed class DependencyInjectionCoverageTests
     }
 
     [Fact]
+    public void Registration_Rules_Short_Circuit_Additional_Predicates_After_A_Non_Match()
+    {
+        var evaluatedSecondPredicate = false;
+        var type = new TypeContext("Service", typeof(CoverageImplementation), Array.Empty<IElementContext>());
+        var rule = new DynaBeeGeneratedTypeRegistrationBuilder()
+            .Where(_ => false)
+            .Where(_ =>
+            {
+                evaluatedSecondPredicate = true;
+                return true;
+            })
+            .Build();
+
+        Assert.False(rule.Predicate(type));
+        Assert.False(evaluatedSecondPredicate);
+    }
+
+    [Fact]
     public void Di_Registration_Overloads_Validate_Service_Collections_And_Expose_Default_Concrete_Registrations()
     {
         var context = new BeeAssemblyBuilder(NewAssemblyName())

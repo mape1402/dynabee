@@ -28,8 +28,12 @@ public sealed class InvokerCoverageTests
 
         var bound = context.CreateBoundDelegate<Func<string, string>>(
             "Dispatch", instance, "Echo", new[] { typeof(string) });
+        var covariantBound = context.CreateBoundDelegate<Func<string, object>>(
+            "Dispatch", instance, "Echo", new[] { typeof(string) });
         var discardReturn = context.CreateBoundDelegate<Action<string>>(
             "Dispatch", instance, "Echo", new[] { typeof(string) });
+        var voidBound = context.CreateBoundDelegate<Action<string>>(
+            "Dispatch", instance, "Void", new[] { typeof(string) });
         var open = context.CreateOpenDelegate<Func<object, string, string>>(
             "Dispatch", "Echo", new[] { typeof(string) });
         var openVoid = context.CreateOpenDelegate<Action<object, string>>(
@@ -38,7 +42,10 @@ public sealed class InvokerCoverageTests
         var typedFactory = context.CreateFactoryDelegate(typeof(Func<object>), "Factory", Type.EmptyTypes);
 
         Assert.Equal("bound", bound("bound"));
+        Assert.Equal("covariant", covariantBound("covariant"));
         discardReturn("ignored");
+        voidBound("bound-void");
+        Assert.Equal("bound-void", DispatchRecorder.LastValue);
         Assert.Equal("open", open(instance, "open"));
         openVoid(instance, "ignored");
         Assert.Equal(context.GetClrType("Factory"), factory().GetType());
