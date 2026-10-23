@@ -258,6 +258,19 @@ public sealed class PlanAndDiagnosticsCoverageTests
         cache.Clear();
     }
 
+    [Fact]
+    public void Generation_Diagnostics_Reject_Invalid_Inputs_And_Format_All_Locations()
+    {
+        Assert.Throws<ArgumentException>(() => new DynaBeePlanDiagnostic(DynaBeePlanDiagnosticSeverity.Error, "", "message"));
+        Assert.Throws<ArgumentException>(() => new DynaBeePlanDiagnostic(DynaBeePlanDiagnosticSeverity.Error, "DBX", ""));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeePlanValidationResult(null!));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeePlanValidationException(null!));
+
+        Assert.Equal("Warning DBX: message", new DynaBeePlanDiagnostic(DynaBeePlanDiagnosticSeverity.Warning, "DBX", "message").ToString());
+        Assert.Equal("Warning DBX (Type): message", new DynaBeePlanDiagnostic(DynaBeePlanDiagnosticSeverity.Warning, "DBX", "message", "Type").ToString());
+        Assert.Equal("Warning DBX (Type.Member): message", new DynaBeePlanDiagnostic(DynaBeePlanDiagnosticSeverity.Warning, "DBX", "message", "Type", "Member").ToString());
+    }
+
     private static string InvokeDiagnosticHelper(string name, MemberInfo member)
         => (string)typeof(DynaBeeDiagnosticsExtensions)
             .GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)!

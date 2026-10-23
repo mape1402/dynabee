@@ -127,6 +127,21 @@ public sealed class GenerationExtensionsCoverageTests
         Assert.Throws<ArgumentNullException>(() => DynaBeeGenerationServiceCollectionExtensions.AddDynaBeeExtensionsFromAssemblies(null!, typeof(GenerationExtensionsCoverageTests).Assembly));
     }
 
+    [Fact]
+    public void Generation_Extensions_Allow_Empty_Discovery_And_Schemas_Without_Validators()
+    {
+        var key = new BeeMetadataKey<int>("optional.rank");
+        var schema = new DynaBeeMetadataSchema<int>(key);
+        var validation = new DynaBeeExtensionValidationContext();
+        var services = new ServiceCollection();
+
+        schema.Validate(new Dictionary<string, object> { [key.Name] = 0 }, "Generated", validation);
+        services.AddDynaBeeExtensionsFromAssemblies(null!);
+
+        Assert.Empty(validation.Diagnostics);
+        Assert.Empty(services);
+    }
+
     private static string NewAssemblyName()
         => $"DynaBee.Tests.GenerationExtensions.{Guid.NewGuid():N}";
 
