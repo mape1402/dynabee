@@ -10,10 +10,15 @@ public sealed class DynaBeeTestDiagnostic
     /// </summary>
     /// <param name="message">Diagnostic message.</param>
     /// <param name="exception">Optional source exception.</param>
-    public DynaBeeTestDiagnostic(string message, Exception exception = null)
+    /// <param name="severity">Diagnostic severity.</param>
+    public DynaBeeTestDiagnostic(
+        string message,
+        Exception exception = null,
+        DynaBeeTestDiagnosticSeverity severity = DynaBeeTestDiagnosticSeverity.Error)
     {
         Message = string.IsNullOrWhiteSpace(message) ? throw new ArgumentException(nameof(message)) : message;
         Exception = exception;
+        Severity = severity;
     }
 
     /// <summary>
@@ -26,7 +31,12 @@ public sealed class DynaBeeTestDiagnostic
     /// </summary>
     public Exception Exception { get; }
 
+    /// <summary>
+    /// Gets the diagnostic severity.
+    /// </summary>
+    public DynaBeeTestDiagnosticSeverity Severity { get; }
+
     /// <inheritdoc/>
     public override string ToString()
-        => Exception == null ? Message : $"{Message}: {Exception.Message}";
+        => $"{Severity}: " + (Exception == null ? Message : $"{Message}: {Exception.Message}");
 }

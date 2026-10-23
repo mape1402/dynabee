@@ -36,6 +36,11 @@ public sealed class DynaBeeTestGenerationResult
     public IReadOnlyList<DynaBeeTestDiagnostic> Diagnostics { get; }
 
     /// <summary>
+    /// Gets consumer-supplied or plan-exported generated source snapshots.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> GeneratedSources => _generatedSources;
+
+    /// <summary>
     /// Writes generated source snapshots to a directory.
     /// </summary>
     /// <param name="path">Target directory path.</param>

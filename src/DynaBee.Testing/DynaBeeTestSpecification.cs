@@ -10,6 +10,7 @@ public sealed class DynaBeeTestSpecification
 {
     private readonly List<Action<IBeeAssemblyBuilder>> _configurations = new();
     private readonly Dictionary<string, string> _generatedSources = new(StringComparer.Ordinal);
+    private DynaBeeGenerationPlan _plan;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DynaBeeTestSpecification"/> class.
@@ -67,6 +68,7 @@ public sealed class DynaBeeTestSpecification
                 $"Specification assembly '{AssemblyName}' does not match plan assembly '{plan.AssemblyName}'.");
         }
 
+        _plan = plan;
         return Configure(builder => plan.ApplyTo(builder));
     }
 
@@ -105,6 +107,17 @@ public sealed class DynaBeeTestSpecification
             throw new ArgumentNullException(nameof(plan));
 
         return new DynaBeeTestSpecification(plan.AssemblyName).UsePlan(plan);
+    }
+
+    internal IReadOnlyDictionary<string, string> GetSourcesForResult()
+    {
+        if (_generatedSources.Count != 0 || _plan == null)
+            return _generatedSources;
+
+        return new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["DynaBee.Plan.g.cs"] = _plan.ExportSource().Source
+        };
     }
 }
 

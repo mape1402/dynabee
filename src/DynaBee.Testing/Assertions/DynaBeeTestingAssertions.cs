@@ -21,6 +21,34 @@ public static class DynaBeeDiagnosticAssertions
 
         throw new InvalidOperationException("Expected no DynaBee diagnostics, but found: " + string.Join(Environment.NewLine, diagnostics));
     }
+
+    /// <summary>
+    /// Asserts that diagnostics contain no error-severity entries.
+    /// </summary>
+    /// <param name="diagnostics">Diagnostics to inspect.</param>
+    public static void ShouldHaveNoErrors(this IReadOnlyCollection<DynaBeeTestDiagnostic> diagnostics)
+    {
+        if (diagnostics == null)
+            throw new ArgumentNullException(nameof(diagnostics));
+
+        var errors = diagnostics.Where(x => x.Severity == DynaBeeTestDiagnosticSeverity.Error).ToArray();
+        if (errors.Length != 0)
+            throw new InvalidOperationException("Expected no DynaBee errors, but found: " + string.Join(Environment.NewLine, errors));
+    }
+
+    /// <summary>
+    /// Asserts that diagnostics contain no warning-severity entries.
+    /// </summary>
+    /// <param name="diagnostics">Diagnostics to inspect.</param>
+    public static void ShouldHaveNoWarnings(this IReadOnlyCollection<DynaBeeTestDiagnostic> diagnostics)
+    {
+        if (diagnostics == null)
+            throw new ArgumentNullException(nameof(diagnostics));
+
+        var warnings = diagnostics.Where(x => x.Severity == DynaBeeTestDiagnosticSeverity.Warning).ToArray();
+        if (warnings.Length != 0)
+            throw new InvalidOperationException("Expected no DynaBee warnings, but found: " + string.Join(Environment.NewLine, warnings));
+    }
 }
 
 /// <summary>
@@ -173,6 +201,65 @@ public static class DynaBeeGeneratedTypeAssertions
     }
 
     /// <summary>
+    /// Asserts that a generated type exposes a method with an exact signature.
+    /// </summary>
+    /// <param name="typeContext">Generated type context.</param>
+    /// <param name="name">Method name.</param>
+    /// <param name="parameterTypes">Expected parameter types.</param>
+    /// <returns>The matching method.</returns>
+    public static MethodInfo ShouldHaveMethod(this ITypeContext typeContext, string name, params Type[] parameterTypes)
+        => (typeContext ?? throw new ArgumentNullException(nameof(typeContext))).ClrType.ShouldHaveMethod(name, parameterTypes);
+
+    /// <summary>
+    /// Asserts that a CLR type exposes a method with an exact signature.
+    /// </summary>
+    /// <param name="type">Generated CLR type.</param>
+    /// <param name="name">Method name.</param>
+    /// <param name="parameterTypes">Expected parameter types.</param>
+    /// <returns>The matching method.</returns>
+    public static MethodInfo ShouldHaveMethod(this Type type, string name, params Type[] parameterTypes)
+    {
+        if (type == null)
+            throw new ArgumentNullException(nameof(type));
+
+        var method = type.GetMethod(name, parameterTypes ?? Type.EmptyTypes);
+        return method ?? throw new InvalidOperationException(
+            $"Expected generated type '{type.FullName}' to have method '{name}({string.Join(", ", (parameterTypes ?? Type.EmptyTypes).Select(x => x.Name))})'.");
+    }
+
+    /// <summary>
+    /// Asserts that a generated type exposes a property with the requested type.
+    /// </summary>
+    /// <param name="typeContext">Generated type context.</param>
+    /// <param name="name">Property name.</param>
+    /// <param name="propertyType">Expected property type.</param>
+    /// <returns>The matching property.</returns>
+    public static PropertyInfo ShouldHaveProperty(this ITypeContext typeContext, string name, Type propertyType)
+        => (typeContext ?? throw new ArgumentNullException(nameof(typeContext))).ClrType.ShouldHaveProperty(name, propertyType);
+
+    /// <summary>
+    /// Asserts that a CLR type exposes a property with the requested type.
+    /// </summary>
+    /// <param name="type">Generated CLR type.</param>
+    /// <param name="name">Property name.</param>
+    /// <param name="propertyType">Expected property type.</param>
+    /// <returns>The matching property.</returns>
+    public static PropertyInfo ShouldHaveProperty(this Type type, string name, Type propertyType)
+    {
+        if (type == null)
+            throw new ArgumentNullException(nameof(type));
+
+        if (propertyType == null)
+            throw new ArgumentNullException(nameof(propertyType));
+
+        var property = type.GetProperty(name);
+        if (property == null || property.PropertyType != propertyType)
+            throw new InvalidOperationException($"Expected generated type '{type.FullName}' to have property '{name}' of type '{propertyType.FullName}'.");
+
+        return property;
+    }
+
+    /// <summary>
     /// Asserts that a type has the requested generic arguments.
     /// </summary>
     /// <param name="type">Type to inspect.</param>
@@ -200,5 +287,29 @@ public static class DynaBeeGeneratedTypeAssertions
             return true;
 
         return expected.IsGenericTypeDefinition && actual.IsGenericType && actual.GetGenericTypeDefinition() == expected;
+    }
+}
+
+/// <summary>
+/// Assertion extensions for generated source snapshots.
+/// </summary>
+public static class DynaBeeGeneratedSourceAssertions
+{
+    /// <summary>
+    /// Asserts that a named generated source exactly matches expected text.
+    /// </summary>
+    /// <param name="result">Generation result.</param>
+    /// <param name="path">Generated source path.</param>
+    /// <param name="expected">Expected source text.</param>
+    public static void ShouldMatchSource(this DynaBeeTestGenerationResult result, string path, string expected)
+    {
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+
+        if (!result.GeneratedSources.TryGetValue(path, out var actual))
+            throw new InvalidOperationException($"Generated source '{path}' was not found.");
+
+        if (!string.Equals(expected, actual, StringComparison.Ordinal))
+            throw new InvalidOperationException($"Generated source '{path}' did not match the expected snapshot.");
     }
 }

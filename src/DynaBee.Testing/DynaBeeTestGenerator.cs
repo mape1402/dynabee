@@ -57,7 +57,7 @@ public sealed class DynaBeeTestGenerator : IDynaBeeTestGenerator
             return Task.FromResult(new DynaBeeTestGenerationResult(
                 assembly,
                 Array.Empty<DynaBeeTestDiagnostic>(),
-                specification.GeneratedSources));
+                specification.GetSourcesForResult()));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -66,7 +66,7 @@ public sealed class DynaBeeTestGenerator : IDynaBeeTestGenerator
                 new DynaBeeTestDiagnostic($"DynaBee test generation failed for assembly '{specification.AssemblyName}'", ex)
             };
 
-            return Task.FromResult(new DynaBeeTestGenerationResult(null, diagnostics, specification.GeneratedSources));
+            return Task.FromResult(new DynaBeeTestGenerationResult(null, diagnostics, specification.GetSourcesForResult()));
         }
     }
 }
