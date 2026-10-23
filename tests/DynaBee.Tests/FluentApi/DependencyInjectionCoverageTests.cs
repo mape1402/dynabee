@@ -275,6 +275,27 @@ public sealed class DependencyInjectionCoverageTests
         Assert.Empty(InvokeDiPolicy<IEnumerable<Type>>("ResolveServiceRegistrations", fallback, implementation));
     }
 
+    [Fact]
+    public void Dependency_Infrastructure_Rejects_Invalid_Constructors_And_Keeps_Stable_Snapshots()
+    {
+        var registry = new AssemblyContextRegistry(NewAssemblyName());
+        var snapshot = registry.BuildSnapshot();
+        var provider = new AssemblyContextProvider(registry, snapshot);
+
+        Assert.Throws<ArgumentNullException>(() => new AssemblyContextProvider(null!));
+        Assert.Throws<ArgumentNullException>(() => new AssemblyContextProvider(registry, null!));
+        Assert.Throws<ArgumentException>(() => new AssemblyContextRegistry(" "));
+        Assert.Throws<ArgumentNullException>(() => new AssemblyContextRegistry("Registry", null!));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeAssemblyCatalog(null!, new Dictionary<string, IAssemblyContextProvider>()));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeAssemblyCatalog(new Dictionary<string, IAssemblyContextRegistry>(), null!));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGeneratedTypeRegistrationRule(null!, Array.Empty<Type>(), null, null, Array.Empty<Func<ITypeContext, IEnumerable<ServiceDescriptor>>>()));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGeneratedTypeRegistrationRule(_ => true, null!, null, null, Array.Empty<Func<ITypeContext, IEnumerable<ServiceDescriptor>>>()));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGeneratedTypeRegistrationRule(_ => true, Array.Empty<Type>(), null, null, null!));
+
+        Assert.Same(snapshot, provider.Current);
+        Assert.Equal(0, provider.Generation);
+    }
+
     private static T InvokeDiPolicy<T>(string name, params object[] arguments)
         => (T)typeof(DynaBeeServiceCollectionExtensions)
             .GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)!
