@@ -597,6 +597,53 @@ public sealed class MethodBodyAdvancedCoverageTests
     }
 
     [Fact]
+    public void MethodBodyBuilder_Handles_Empty_Argument_Collections_And_Incomplete_Interface_TypeBuilders()
+    {
+        var body = CreateBody();
+        var baseMethod = typeof(ArgumentBase).GetMethod(nameof(ArgumentBase.Add))!;
+        var baseBody = new BeeMethodBodyBuilder(
+            new DynamicMethod("BaseArguments", typeof(int), Type.EmptyTypes).GetILGenerator(),
+            typeof(int),
+            Array.Empty<(string Name, Type Type, int ArgumentIndex)>(),
+            typeof(ArgumentBase),
+            baseMethod: baseMethod);
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName($"DynaBee.Tests.IncompleteInterface.{Guid.NewGuid():N}"),
+            AssemblyBuilderAccess.Run);
+        var interfaceBuilder = assembly
+            .DefineDynamicModule("Incomplete")
+            .DefineType("IIncomplete", TypeAttributes.Public | TypeAttributes.Interface | TypeAttributes.Abstract);
+        var interfaceBody = new BeeMethodBodyBuilder(
+            interfaceBuilder.DefineMethod("Use", MethodAttributes.Public | MethodAttributes.Abstract | MethodAttributes.Virtual, typeof(void), Type.EmptyTypes).GetILGenerator(),
+            typeof(void),
+            Array.Empty<(string Name, Type Type, int ArgumentIndex)>(),
+            interfaceBuilder);
+
+        Assert.Equal(typeof(string), body.Concat(Array.Empty<IBeeValueExpression>()).Type);
+        Assert.Equal(typeof(ConstructorTarget), body.New(typeof(ConstructorTarget), new[] { body.Constant(1) }).Type);
+        Assert.Equal(typeof(int), baseBody.CallBase(new[] { baseBody.Constant(1), baseBody.Constant(2) }).Type);
+        Assert.Throws<MissingMemberException>(() => interfaceBody.Property(interfaceBody.Self(), "Missing"));
+        Assert.Throws<MissingFieldException>(() => interfaceBody.Field(interfaceBody.Self(), "Missing"));
+    }
+
+    [Fact]
+    public void Body_Expression_Guards_Reject_Unknown_Internal_Operator_Kinds()
+    {
+        var il = new DynamicMethod("InvalidOperators", typeof(void), Type.EmptyTypes).GetILGenerator();
+        var left = new BeeConstantExpression(1, typeof(int));
+        var right = new BeeConstantExpression(2, typeof(int));
+
+        Assert.Throws<NotSupportedException>(() => new BeeOrderedComparisonExpression(
+            left,
+            right,
+            (BeeOrderedComparisonKind)999).EmitLoad(il));
+        Assert.Throws<NotSupportedException>(() => new BeeArithmeticExpression(
+            left,
+            right,
+            (BeeArithmeticKind)999).EmitLoad(il));
+    }
+
+    [Fact]
     public void Generated_Bodies_Execute_String_Addition_And_Protected_Value_Returns()
     {
         var context = new BeeAssemblyBuilder(NewAssemblyName())
@@ -659,6 +706,12 @@ public sealed class MethodBodyAdvancedCoverageTests
 
         public virtual int VirtualValue()
             => Value + Field;
+    }
+
+    public class ArgumentBase
+    {
+        public virtual int Add(int left, int right)
+            => left + right;
     }
 
     private enum ConversionKind
