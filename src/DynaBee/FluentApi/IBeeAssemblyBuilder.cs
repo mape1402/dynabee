@@ -24,6 +24,11 @@ namespace DynaBee.FluentApi
         BeeAssemblyBuilder EnableCache();
 
         /// <summary>
+        /// Generates the assembly as collectible and disables the process-wide builder cache.
+        /// </summary>
+        BeeAssemblyBuilder AsCollectible();
+
+        /// <summary>
         /// Stores metadata for the generated assembly context.
         /// </summary>
         BeeAssemblyBuilder WithMetadata(string key, object value);
@@ -114,5 +119,10 @@ namespace DynaBee.FluentApi
         /// Builds all configured types and returns the assembly context.
         /// </summary>
         IAssemblyContext Build();
+
+        /// <summary>
+        /// Builds all configured types and returns a releasable context lease.
+        /// </summary>
+        IAssemblyContextLease BuildLease();
     }
 }
