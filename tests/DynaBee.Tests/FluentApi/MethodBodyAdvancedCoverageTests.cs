@@ -150,6 +150,44 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.Throws<InvalidOperationException>(() => branches.Default(_ => { }));
     }
 
+    [Fact]
+    public void MethodBodyBuilder_Rejects_Null_Signatures_Ambiguity_And_Invalid_Protected_Returns()
+    {
+        var body = CreateBody(("value", typeof(int), 0), ("item", typeof(AmbiguousIndexer), 1));
+        var voidBody = new BeeMethodBodyBuilder(
+            new DynamicMethod("Void", typeof(void), Type.EmptyTypes).GetILGenerator(),
+            typeof(void),
+            Array.Empty<(string Name, Type Type, int ArgumentIndex)>());
+        var returnBody = new BeeMethodBodyBuilder(
+            new DynamicMethod("Return", typeof(int), Type.EmptyTypes).GetILGenerator(),
+            typeof(int),
+            Array.Empty<(string Name, Type Type, int ArgumentIndex)>());
+        var abstractBase = typeof(AbstractBase).GetMethod(nameof(AbstractBase.Value))!;
+        var abstractBody = new BeeMethodBodyBuilder(
+            new DynamicMethod("Abstract", typeof(int), Type.EmptyTypes).GetILGenerator(),
+            typeof(int),
+            Array.Empty<(string Name, Type Type, int ArgumentIndex)>(),
+            typeof(AbstractBase),
+            baseMethod: abstractBase);
+
+        Assert.Throws<ArgumentNullException>(() => body.New(null!, body.Constant(1)));
+        Assert.Throws<ArgumentNullException>(() => body.Index(body.NewArray<int>(body.Constant(1)), null!));
+        Assert.Throws<ArgumentNullException>(() => body.While(null!, _ => { }));
+        Assert.Throws<ArgumentNullException>(() => body.While(_ => body.Constant(true), null!));
+        Assert.Throws<ArgumentNullException>(() => body.StaticCall((Type)null!, nameof(DateTime.IsLeapYear), new[] { typeof(int) }));
+        Assert.Throws<ArgumentNullException>(() => body.Property(null!, "Value"));
+        Assert.Throws<ArgumentException>(() => body.Property(body.Parameter<int>("value"), ""));
+        Assert.Throws<ArgumentNullException>(() => body.Constant("value", null!));
+        Assert.Throws<ArgumentNullException>(() => body.Assign(body.DeclareLocal<int>("target"), null!));
+        Assert.Throws<ArgumentNullException>(() => body.Using(body.New<RefProbe>(), "resource", null!));
+        Assert.Throws<InvalidOperationException>(() => returnBody.Return());
+        Assert.Throws<ArgumentNullException>(() => voidBody.Return(null!));
+        Assert.Throws<InvalidOperationException>(() => abstractBody.CallBase());
+        Assert.Throws<AmbiguousMatchException>(() => body.Index(body.Parameter<AmbiguousIndexer>("item"), body.Constant((short)1)));
+        Assert.Throws<InvalidOperationException>(() => body.StaticCall(typeof(DateTime).GetMethod(nameof(DateTime.IsLeapYear))!));
+
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");
@@ -206,5 +244,28 @@ public sealed class MethodBodyAdvancedCoverageTests
 
         public static void RecordFinally()
             => FinallyCount++;
+    }
+
+    public abstract class AbstractBase
+    {
+        public abstract int Value();
+    }
+
+    public sealed class AmbiguousIndexer : AmbiguousIndexerBase
+    {
+        public int this[long index]
+        {
+            get => 0;
+            set { }
+        }
+    }
+
+    public class AmbiguousIndexerBase
+    {
+        public int this[int index]
+        {
+            get => 0;
+            set { }
+        }
     }
 }
