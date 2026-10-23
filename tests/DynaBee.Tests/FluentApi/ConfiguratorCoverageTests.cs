@@ -119,6 +119,23 @@ public sealed class ConfiguratorCoverageTests
     }
 
     [Fact]
+    public void PropertyOverrideConfigurator_Rejects_Unrelated_Base_Properties_And_Null_Contracts()
+    {
+        var property = typeof(OverrideBase).GetProperty(nameof(OverrideBase.Number))!;
+
+        Assert.Throws<ArgumentNullException>(() => new PropertyOverrideConfigurator(null!, null, null, null, null));
+        Assert.Throws<InvalidOperationException>(() => new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Unrelated", type => type
+                .AddElementConfigurator(new PropertyOverrideConfigurator(
+                    property,
+                    new BeePropertyAccessorBuilder(),
+                    new BeePropertyAccessorBuilder(),
+                    null,
+                    null)))
+            .Build());
+    }
+
+    [Fact]
     public void MethodConfigurator_Resolves_All_Runtime_Access_Modifiers()
     {
         Assert.Equal(MethodAccessModifier.Public, MethodConfigurator.GetAccessModifier(GetMethod(nameof(AccessBase.Public))));
@@ -262,6 +279,7 @@ public sealed class ConfiguratorCoverageTests
         var intConstructor = typeof(ConstructorBaseInt).GetConstructor(new[] { typeof(int) })!;
         var noParameters = Array.Empty<(string Name, BeeType Type)>();
 
+        Assert.Throws<ArgumentNullException>(() => new ConstructorConfigurator(null!, null));
         Assert.Throws<ArgumentNullException>(() => new ConstructorConfigurator(noParameters, null).Configure(null!));
         Assert.Throws<InvalidOperationException>(() => ConfigureConstructor(
             new ConstructorConfigurator(noParameters, null, baseConstructor: textConstructor),
@@ -373,6 +391,33 @@ public sealed class ConfiguratorCoverageTests
         Assert.NotNull(contractType.GetProperty("Value")!.GetMethod);
         Assert.Null(contractType.GetProperty("Value")!.SetMethod);
         Assert.True(contractType.GetMethod("Get")!.IsAbstract);
+    }
+
+    [Fact]
+    public void Configurators_Apply_Default_Access_Modifiers_To_All_Generated_Member_Shapes()
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("DefaultMembers", type => type
+                .AddField<int>("Hidden")
+                .AddEvent<EventHandler>("Changed"))
+            .AddEnum<int>("DefaultEnum", values => values.AddValue("One", 1))
+            .AddStruct("DefaultStruct", _ => { })
+            .AddInterface("IDefaultContract", type => type.AddProperty<int>("Value"))
+            .Build();
+
+        var members = context.GetClrType("DefaultMembers");
+        var enumType = context.GetClrType("DefaultEnum");
+        var structType = context.GetClrType("DefaultStruct");
+        var contract = context.GetClrType("IDefaultContract");
+        var property = contract.GetProperty("Value")!;
+
+        Assert.True(members.GetField("Hidden", BindingFlags.Instance | BindingFlags.NonPublic)!.IsPrivate);
+        Assert.True(members.GetEvent("Changed")!.AddMethod!.IsPublic);
+        Assert.True(enumType.IsPublic);
+        Assert.True(structType.IsPublic);
+        Assert.True(contract.IsPublic);
+        Assert.True(property.GetMethod!.IsPublic);
+        Assert.True(property.SetMethod!.IsPublic);
     }
 
     [Fact]
