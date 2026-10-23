@@ -288,7 +288,7 @@ namespace DynaBee.Infrastructure.Configurators
                 var local = il.DeclareLocal(returnType);
                 il.Emit(OpCodes.Ldloca_S, local);
                 il.Emit(OpCodes.Initobj, returnType);
-                il.Emit(OpCodes.Ldloc_0);
+                il.Emit(OpCodes.Ldloc, local);
                 il.Emit(OpCodes.Ret);
                 return;
             }

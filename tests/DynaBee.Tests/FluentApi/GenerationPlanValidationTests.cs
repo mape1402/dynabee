@@ -49,4 +49,17 @@ public sealed class GenerationPlanValidationTests
 
         Assert.False(result.HasErrors);
     }
+
+    [Fact]
+    public void Validate_Reports_Duplicate_Method_Signatures()
+    {
+        var plan = new DynaBeeGenerationPlan("DynaBee.Tests.Invalid.Methods")
+            .AddClass("Formatter", type => type
+                .AddMethod("Format", typeof(string), method => method.WithParameter<int>("value"))
+                .AddMethod("Format", typeof(string), method => method.WithParameter<int>("value")));
+
+        var result = plan.Validate();
+
+        Assert.Contains(result.Diagnostics, x => x.Code == "DBP032");
+    }
 }

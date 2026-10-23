@@ -16,6 +16,19 @@ public sealed class GenerationLifecycleTests
     }
 
     [Fact]
+    public void GetFingerprint_Distinguishes_Method_Parameter_Signatures()
+    {
+        var integers = new DynaBeeGenerationPlan("DynaBee.Tests.Fingerprint.Signatures")
+            .AddClass("Formatter", type => type
+                .AddMethod("Format", typeof(string), method => method.WithParameter<int>("value")));
+        var strings = new DynaBeeGenerationPlan("DynaBee.Tests.Fingerprint.Signatures")
+            .AddClass("Formatter", type => type
+                .AddMethod("Format", typeof(string), method => method.WithParameter<string>("value")));
+
+        Assert.NotEqual(integers.GetFingerprint(), strings.GetFingerprint());
+    }
+
+    [Fact]
     public void PlanExecutor_Uses_A_DI_Managed_Cache()
     {
         var services = new ServiceCollection().AddDynaBeeGeneration();

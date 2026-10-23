@@ -152,7 +152,18 @@ namespace DynaBee.FluentApi.Generation
                 foreach (var metadata in classPlan.Metadata.OrderBy(x => x.Key, StringComparer.Ordinal))
                     Append(builder, "class-metadata", metadata.Key, FormatValue(metadata.Value));
                 foreach (var member in classPlan.Members.OrderBy(x => x.ElementType).ThenBy(x => x.Name, StringComparer.Ordinal))
-                    Append(builder, "member", member.ElementType.ToString(), member.Name, member.ValueType?.AssemblyQualifiedName ?? string.Empty);
+                {
+                    var parameterTypes = string.Join(
+                        ",",
+                        member.ParameterTypes.Select(x => x?.AssemblyQualifiedName ?? string.Empty));
+                    Append(
+                        builder,
+                        "member",
+                        member.ElementType.ToString(),
+                        member.Name,
+                        member.ValueType?.AssemblyQualifiedName ?? string.Empty,
+                        parameterTypes);
+                }
             }
 
             return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()))).ToLowerInvariant();
@@ -227,6 +238,23 @@ namespace DynaBee.FluentApi.Generation
                     DynaBeePlanDiagnosticSeverity.Error,
                     "DBP031",
                     $"{duplicate.Key.ElementType} '{duplicate.Key.Name}' is declared more than once.",
+                    classPlan.Name,
+                    duplicate.Key.Name));
+            }
+
+            foreach (var duplicate in classPlan.Members
+                .Where(x => x.ElementType == ElementType.Method && x.Name != ".ctor")
+                .GroupBy(x => new
+                {
+                    x.Name,
+                    ParameterTypes = string.Join(",", x.ParameterTypes.Select(type => type?.AssemblyQualifiedName ?? string.Empty)),
+                })
+                .Where(x => x.Count() > 1))
+            {
+                diagnostics.Add(new DynaBeePlanDiagnostic(
+                    DynaBeePlanDiagnosticSeverity.Error,
+                    "DBP032",
+                    $"Method '{duplicate.Key.Name}({duplicate.Key.ParameterTypes})' is declared more than once.",
                     classPlan.Name,
                     duplicate.Key.Name));
             }
