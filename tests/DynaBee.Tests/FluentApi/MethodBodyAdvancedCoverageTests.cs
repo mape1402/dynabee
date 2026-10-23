@@ -373,6 +373,23 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.Throws<InvalidOperationException>(() => dynamicGetterOnly.EmitAssign(il, new BeeConstantExpression(1, typeof(int))));
     }
 
+    [Fact]
+    public void Il_Conversion_Compatibility_Covers_Nullables_Enums_References_And_Numerics()
+    {
+        Assert.False(BeeIlConversions.CanConvert(typeof(void), typeof(int)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int), typeof(int)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(string), typeof(object)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int), typeof(int?)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int?), typeof(long)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(ConversionKind), typeof(int)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int), typeof(ConversionKind)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(object), typeof(Guid)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(Guid), typeof(string)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(string), typeof(IDisposable)));
+        Assert.False(BeeIlConversions.CanConvert(typeof(int), typeof(Guid)));
+        Assert.False(BeeIlConversions.CanConvert(typeof(DateTime), typeof(decimal)));
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");
@@ -395,6 +412,12 @@ public sealed class MethodBodyAdvancedCoverageTests
         }
 
         public int Value { get; }
+    }
+
+    private enum ConversionKind
+    {
+        None,
+        One,
     }
 
     public sealed class Token
