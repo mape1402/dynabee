@@ -21,6 +21,11 @@
         Field,
 
         /// <summary>
+        /// Indicates that the element is an event.
+        /// </summary>
+        Event,
+
+        /// <summary>
         /// Indicates that the element is a constant value.
         /// </summary>
         Constant

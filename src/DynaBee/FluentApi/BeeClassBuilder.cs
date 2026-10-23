@@ -318,6 +318,86 @@ namespace DynaBee.FluentApi
         }
 
         /// <summary>
+        /// Adds a CLR operator or conversion method.
+        /// </summary>
+        /// <param name="kind">Operator kind.</param>
+        /// <param name="returnType">Operator return type.</param>
+        /// <param name="configure">Operator parameter and body configuration.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder AddOperator(BeeOperatorKind kind, BeeType returnType, Action<BeeMethodBuilder> configure)
+        {
+            var methodBuilder = new BeeMethodBuilder(GetOperatorMethodName(kind), returnType)
+                .AsStatic()
+                .AsSpecialName()
+                .WithAccess(MethodAccessModifier.Public);
+            configure?.Invoke(methodBuilder);
+            _classConfigurator.AddElementBuilder(methodBuilder.ToConfigurator());
+            return this;
+        }
+
+        /// <summary>
+        /// Adds an event backed by a delegate field with generated add and remove accessors.
+        /// </summary>
+        /// <param name="name">Event name.</param>
+        /// <param name="handlerType">Delegate type.</param>
+        /// <param name="configure">Optional event configuration.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder AddEvent(string name, BeeType handlerType, Action<BeeEventBuilder> configure = null)
+        {
+            var eventBuilder = new BeeEventBuilder(name, handlerType);
+            configure?.Invoke(eventBuilder);
+            _classConfigurator.AddElementBuilder(eventBuilder.ToConfigurator());
+            return this;
+        }
+
+        /// <summary>
+        /// Adds an event backed by a delegate field with generated add and remove accessors.
+        /// </summary>
+        /// <typeparam name="THandler">Delegate type.</typeparam>
+        /// <param name="name">Event name.</param>
+        /// <param name="configure">Optional event configuration.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder AddEvent<THandler>(string name, Action<BeeEventBuilder> configure = null)
+            where THandler : Delegate
+            => AddEvent(name, typeof(THandler), configure);
+
+        /// <summary>
+        /// Adds a dictionary-backed indexer named <c>Item</c>.
+        /// </summary>
+        /// <param name="indexType">Indexer key type.</param>
+        /// <param name="valueType">Indexer value type.</param>
+        /// <param name="configure">Optional indexer configuration.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder AddIndexer(BeeType indexType, BeeType valueType, Action<BeeIndexerBuilder> configure = null)
+            => AddIndexer("Item", indexType, valueType, configure);
+
+        /// <summary>
+        /// Adds a dictionary-backed indexer.
+        /// </summary>
+        /// <param name="name">CLR indexer property name.</param>
+        /// <param name="indexType">Indexer key type.</param>
+        /// <param name="valueType">Indexer value type.</param>
+        /// <param name="configure">Optional indexer configuration.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder AddIndexer(string name, BeeType indexType, BeeType valueType, Action<BeeIndexerBuilder> configure = null)
+        {
+            var indexerBuilder = new BeeIndexerBuilder(name, indexType, valueType);
+            configure?.Invoke(indexerBuilder);
+            _classConfigurator.AddElementBuilder(indexerBuilder.ToConfigurator());
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a dictionary-backed indexer named <c>Item</c>.
+        /// </summary>
+        /// <typeparam name="TIndex">Indexer key type.</typeparam>
+        /// <typeparam name="TValue">Indexer value type.</typeparam>
+        /// <param name="configure">Optional indexer configuration.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder AddIndexer<TIndex, TValue>(Action<BeeIndexerBuilder> configure = null)
+            => AddIndexer("Item", typeof(TIndex), typeof(TValue), configure);
+
+        /// <summary>
         /// Overrides a base method and surrounds its base invocation with interceptor bodies.
         /// </summary>
         /// <param name="baseMethod">Virtual or abstract base method to intercept.</param>
@@ -343,6 +423,20 @@ namespace DynaBee.FluentApi
             _classConfigurator.AddElementBuilder(methodBuilder.ToConfigurator());
             return this;
         }
+
+        private static string GetOperatorMethodName(BeeOperatorKind kind)
+            => kind switch
+            {
+                BeeOperatorKind.Addition => "op_Addition",
+                BeeOperatorKind.Subtraction => "op_Subtraction",
+                BeeOperatorKind.Multiplication => "op_Multiply",
+                BeeOperatorKind.Division => "op_Division",
+                BeeOperatorKind.Equality => "op_Equality",
+                BeeOperatorKind.Inequality => "op_Inequality",
+                BeeOperatorKind.ImplicitConversion => "op_Implicit",
+                BeeOperatorKind.ExplicitConversion => "op_Explicit",
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+            };
 
         /// <summary>
         /// Adds an overriding property using the signature from a virtual or abstract base property.
