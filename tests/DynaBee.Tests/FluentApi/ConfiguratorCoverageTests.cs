@@ -292,6 +292,125 @@ public sealed class ConfiguratorCoverageTests
         Assert.Equal("configured", injected.GetProperty("Name")!.GetValue(instance));
     }
 
+    [Fact]
+    public void Type_Configurators_Validate_Input_And_Emit_Enums_Structs_And_Interfaces()
+    {
+        Assert.Throws<ArgumentException>(() => new AssemblyConfigurator(" "));
+        Assert.Throws<ArgumentException>(() => new EnumConfigurator(" ", typeof(int), default));
+        Assert.Throws<ArgumentNullException>(() => new EnumConfigurator("Values", null!, default));
+        Assert.Throws<ArgumentException>(() => new EnumConfigurator("Values", typeof(string), default));
+        Assert.Throws<ArgumentException>(() => new EnumConfigurator("Values", typeof(int), default).AddValue(" ", 1));
+        Assert.Throws<ArgumentNullException>(() => new EnumConfigurator("Values", typeof(int), default).AddValue("One", null!));
+        Assert.Throws<ArgumentNullException>(() => new EnumConfigurator("Values", typeof(int), default).AddAttribute(null!));
+        Assert.Throws<ArgumentException>(() => new StructConfigurator(" ", default));
+        Assert.Throws<ArgumentNullException>(() => new StructConfigurator("Point", default).AddElementBuilder(null!));
+        Assert.Throws<ArgumentNullException>(() => new StructConfigurator("Point", default).Implements(null!));
+        Assert.Throws<ArgumentException>(() => new StructConfigurator("Point", default).Implements(typeof(string)));
+        Assert.Throws<ArgumentNullException>(() => new StructConfigurator("Point", default).AddAttribute(null!));
+
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddEnum("ByteValues", typeof(byte), ClassAccessModifier.Public, values => values
+                .AddValue("One", 1)
+                .AddValue("Two", (byte)2))
+            .AddStruct("Point", value => value
+                .Implements<IEmptyContract>()
+                .AddProperty<int>("X"))
+            .AddInterface("IReadOnlyContract", contract => contract
+                .AddProperty<int>("Value", property => property.AsReadOnly())
+                .AddMethod("Get", typeof(int)))
+            .Build();
+
+        var enumType = context.GetClrType("ByteValues");
+        var structType = context.GetClrType("Point");
+        var contractType = context.GetClrType("IReadOnlyContract");
+
+        Assert.True(enumType.IsEnum);
+        Assert.Equal(typeof(byte), Enum.GetUnderlyingType(enumType));
+        Assert.Equal(2, (byte)Enum.Parse(enumType, "Two"));
+        Assert.True(structType.IsValueType);
+        Assert.Contains(typeof(IEmptyContract), structType.GetInterfaces());
+        Assert.NotNull(contractType.GetProperty("Value")!.GetMethod);
+        Assert.Null(contractType.GetProperty("Value")!.SetMethod);
+        Assert.True(contractType.GetMethod("Get")!.IsAbstract);
+    }
+
+    [Fact]
+    public void Member_Configurators_Emit_Properties_Indexers_Fields_And_Events_With_Requested_Accessors()
+    {
+        Assert.Throws<ArgumentException>(() => new FieldConfigurator(" ", typeof(int), default));
+        Assert.Throws<ArgumentNullException>(() => new FieldConfigurator("Value", typeof(int), default).Configure(null!));
+        Assert.Throws<ArgumentException>(() => new PropertyConfigurator(" ", typeof(int)));
+        Assert.Throws<ArgumentException>(() => new PropertyConfigurator("Value", typeof(int), hasGetter: false, hasSetter: false));
+        Assert.Throws<ArgumentException>(() => new InterfaceMethodConfigurator(" ", typeof(void), Array.Empty<(string, BeeType)>(), default, null));
+        Assert.Throws<ArgumentNullException>(() => new InterfaceMethodConfigurator("Run", typeof(void), null!, default, null));
+        Assert.Throws<ArgumentException>(() => new InterfacePropertyConfigurator(" ", typeof(int), true, false, default, default, null));
+        Assert.Throws<ArgumentException>(() => new InterfacePropertyConfigurator("Value", typeof(int), false, false, default, default, null));
+
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Members", type => type
+                .AddField<int>("Secret", FieldAccessModifier.Private)
+                .AddProperty<int>("ReadOnly", property => property.AsReadOnly())
+                .AddProperty<string>("WriteOnly", property => property.AsWriteOnly())
+                .AddIndexer("Values", typeof(string), typeof(int), indexer => indexer
+                    .WithGetterAccess(MethodAccessModifier.Private)
+                    .WithSetterAccess(MethodAccessModifier.Public))
+                .AddEvent<EventHandler>("Changed"))
+            .AddInterface("IWriteOnlyContract", contract => contract
+                .AddProperty<string>("Value", property => property.AsWriteOnly())
+                .AddMethod("Set", typeof(void), method => method.WithParameter<string>("value")))
+            .Build();
+
+        var members = context.GetClrType("Members");
+        var instance = Activator.CreateInstance(members)!;
+        var writeOnly = members.GetProperty("WriteOnly")!;
+        var indexer = members.GetProperty("Values", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+
+        Assert.True(members.GetField("Secret", BindingFlags.Instance | BindingFlags.NonPublic)!.IsPrivate);
+        Assert.Null(members.GetProperty("ReadOnly")!.SetMethod);
+        Assert.Null(writeOnly.GetMethod);
+        writeOnly.SetValue(instance, "accepted");
+        Assert.True(indexer.GetMethod!.IsPrivate);
+        indexer.SetValue(instance, 9, new object[] { "key" });
+        Assert.Equal(9, indexer.GetValue(instance, new object[] { "key" }));
+        var changed = members.GetEvent("Changed")!;
+        changed.AddEventHandler(instance, (EventHandler)((_, _) => { }));
+        Assert.NotNull(changed.AddMethod);
+
+        var writeOnlyContract = context.GetClrType("IWriteOnlyContract").GetProperty("Value")!;
+        Assert.Null(writeOnlyContract.GetMethod);
+        Assert.NotNull(writeOnlyContract.SetMethod);
+    }
+
+    [Fact]
+    public void Event_And_Record_Configurators_Reject_Invalid_Contracts_And_Emit_Deconstruction()
+    {
+        Assert.Throws<ArgumentException>(() =>
+        {
+            var typeContext = CreateTypeContext("Events", typeof(object));
+            new EventConfigurator("Bad", typeof(string), default, null, null).Configure(typeContext);
+            typeContext.Build();
+        });
+        Assert.Throws<ArgumentNullException>(() => new RecordDeconstructConfigurator(null!));
+        Assert.Throws<ArgumentNullException>(() => new RecordDeconstructConfigurator(Array.Empty<(string, BeeType)>()).Configure(null!));
+
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddRecordClass("Pair", record => record
+                .AddComponent<int>("Left")
+                .AddComponent<string>("Right"))
+            .Build();
+        var pairType = context.GetClrType("Pair");
+        var pair = Activator.CreateInstance(pairType)!;
+        var values = new object[] { null!, null! };
+
+        pairType.GetProperty("Left")!.SetValue(pair, 4);
+        pairType.GetProperty("Right")!.SetValue(pair, "four");
+
+        pairType.GetMethod("Deconstruct")!.Invoke(pair, values);
+
+        Assert.Equal(4, values[0]);
+        Assert.Equal("four", values[1]);
+    }
+
     private static void BuildInvalid(Action<BeeClassBuilder> configure)
         => new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("Invalid", type =>
@@ -362,6 +481,14 @@ public sealed class ConfiguratorCoverageTests
         typeContext.Build();
     }
 
+    private static TypeContextBuilder CreateTypeContext(string name, Type baseType)
+    {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(NewAssemblyName()), AssemblyBuilderAccess.Run);
+        var module = assembly.DefineDynamicModule("Validation");
+        var assemblyContext = new AssemblyContextBuilder("Validation", assembly, module);
+        return (TypeContextBuilder)assemblyContext.AddTypeBuilder(name, module.DefineType(name, TypeAttributes.Public, baseType));
+    }
+
     private static string NewAssemblyName()
         => $"DynaBee.Tests.Configurators.{Guid.NewGuid():N}";
 
@@ -428,5 +555,9 @@ public sealed class ConfiguratorCoverageTests
     public interface IValidationContract
     {
         int Transform(int value);
+    }
+
+    public interface IEmptyContract
+    {
     }
 }
