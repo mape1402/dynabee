@@ -712,6 +712,27 @@ public sealed class ConfiguratorCoverageTests
         Assert.Equal(new[] { typeof(int), typeof(string) }, parameterTypes);
     }
 
+    [Fact]
+    public void Expression_Emitter_Uses_User_Defined_Conversions()
+    {
+        var truthyParameter = Expression.Parameter(typeof(Truthy), "value");
+        var truthyExpression = Expression.Lambda<Func<Truthy, bool>>(
+            Expression.Convert(truthyParameter, typeof(bool)),
+            truthyParameter);
+
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Conversions", type => type
+                .AddMethod("Truthy", typeof(bool), method => method
+                    .WithParameter<Truthy>("value")
+                    .EmitsExpression(truthyExpression)))
+            .Build();
+
+        var conversions = context.CreateInstance("Conversions");
+        var truthy = conversions.GetType().GetMethod("Truthy")!;
+        Assert.False((bool)truthy.Invoke(conversions, new object[] { new Truthy(0) })!);
+        Assert.True((bool)truthy.Invoke(conversions, new object[] { new Truthy(1) })!);
+    }
+
     private static void BuildInvalid(Action<BeeClassBuilder> configure)
         => new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("Invalid", type =>
@@ -866,6 +887,19 @@ public sealed class ConfiguratorCoverageTests
 
         protected virtual int ProtectedTransform(int value)
             => value;
+    }
+
+    public readonly struct Truthy
+    {
+        private readonly int _value;
+
+        public Truthy(int value)
+        {
+            _value = value;
+        }
+
+        public static implicit operator bool(Truthy value)
+            => value._value != 0;
     }
 
     public class FinalOverrideBase : OverrideBase
