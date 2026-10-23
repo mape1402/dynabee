@@ -1,6 +1,7 @@
 namespace DynaBee.FluentApi.Generation
 {
     using DynaBee.FluentApi.DependencyInjection;
+    using DynaBee.FluentApi.Extensions;
 
     /// <summary>
     /// Default DI-first generation-plan executor.
@@ -9,16 +10,22 @@ namespace DynaBee.FluentApi.Generation
     {
         private readonly IDynaBeeAssemblyBuilderFactory _builderFactory;
         private readonly IDynaBeeGenerationPlanCache _cache;
+        private readonly IReadOnlyList<IDynaBeeGenerationExtension> _extensions;
+        private readonly IReadOnlyList<IDynaBeeMetadataSchema> _metadataSchemas;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DynaBeeGenerationPlanExecutor"/> class.
         /// </summary>
         public DynaBeeGenerationPlanExecutor(
             IDynaBeeAssemblyBuilderFactory builderFactory,
-            IDynaBeeGenerationPlanCache cache)
+            IDynaBeeGenerationPlanCache cache,
+            IEnumerable<IDynaBeeGenerationExtension> extensions,
+            IEnumerable<IDynaBeeMetadataSchema> metadataSchemas)
         {
             _builderFactory = builderFactory ?? throw new ArgumentNullException(nameof(builderFactory));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+            _extensions = (extensions ?? throw new ArgumentNullException(nameof(extensions))).ToArray();
+            _metadataSchemas = (metadataSchemas ?? throw new ArgumentNullException(nameof(metadataSchemas))).ToArray();
         }
 
         /// <inheritdoc/>
@@ -29,12 +36,32 @@ namespace DynaBee.FluentApi.Generation
 
             IAssemblyContext BuildCore()
             {
+                var validation = new DynaBeeExtensionValidationContext();
+                foreach (var schema in _metadataSchemas)
+                {
+                    schema.Validate(plan.Metadata, null, validation);
+                    foreach (var classPlan in plan.Classes)
+                        schema.Validate(classPlan.Metadata, classPlan.Name, validation);
+                }
+
+                foreach (var extension in _extensions)
+                    extension.Validate(plan, validation);
+                validation.ThrowIfErrors();
+
                 var builder = _builderFactory.Create(plan.AssemblyName).DisableCache();
                 plan.ApplyTo(builder);
-                return builder.Build();
+                foreach (var extension in _extensions)
+                    extension.Configure(plan, builder);
+
+                var context = builder.Build();
+                foreach (var extension in _extensions)
+                    extension.OnGenerated(plan, context);
+                return context;
             }
 
-            return useCache ? _cache.GetOrAdd(plan.GetFingerprint(), BuildCore) : BuildCore();
+            var extensionKey = string.Join("|", _extensions.Select(x => x.GetType().AssemblyQualifiedName));
+            var cacheKey = $"{plan.GetFingerprint()}::{extensionKey}";
+            return useCache ? _cache.GetOrAdd(cacheKey, BuildCore) : BuildCore();
         }
     }
 }
