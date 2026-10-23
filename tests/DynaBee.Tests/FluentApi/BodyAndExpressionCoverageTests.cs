@@ -310,6 +310,50 @@ public sealed class BodyAndExpressionCoverageTests
         Assert.Throws<ArgumentNullException>(() => body.Throw(null!));
     }
 
+    [Fact]
+    public void MethodBodyBuilder_Validates_All_Public_Statement_And_Member_Inputs()
+    {
+        var body = CreateBody(
+            ("number", typeof(int), 0),
+            ("matrix", typeof(int[,]), 1),
+            ("target", typeof(BodyRuntime), 2));
+        var number = body.Parameter<int>("number");
+        var target = body.Parameter<BodyRuntime>("target");
+
+        Assert.Throws<ArgumentNullException>(() => body.For(null!, _ => body.Constant(true), _ => { }, _ => { }));
+        Assert.Throws<ArgumentNullException>(() => body.For(_ => { }, null!, _ => { }, _ => { }));
+        Assert.Throws<ArgumentNullException>(() => body.For(_ => { }, _ => body.Constant(true), null!, _ => { }));
+        Assert.Throws<ArgumentNullException>(() => body.For(_ => { }, _ => body.Constant(true), _ => { }, null!));
+        Assert.Throws<ArgumentNullException>(() => body.ForEach(null!, "item", (_, _) => { }));
+        Assert.Throws<ArgumentException>(() => body.ForEach(number, "", (_, _) => { }));
+        Assert.Throws<ArgumentNullException>(() => body.ForEach(number, "item", null!));
+        Assert.Throws<InvalidOperationException>(() => body.ForEach(number, "item", (_, _) => { }));
+        Assert.Throws<NotSupportedException>(() => body.Index(body.Parameter("matrix"), body.Constant(0)));
+        Assert.Throws<ArgumentNullException>(() => body.Call(null!, typeof(BodyRuntime).GetMethod(nameof(BodyRuntime.Total))!));
+        Assert.Throws<ArgumentNullException>(() => body.Call(target, (MethodInfo)null!));
+        Assert.Throws<ArgumentNullException>(() => body.Call(null!, nameof(BodyRuntime.Total), Type.EmptyTypes));
+        Assert.Throws<ArgumentException>(() => body.Call(target, "", Type.EmptyTypes));
+        Assert.Throws<ArgumentNullException>(() => body.Call(target, nameof(BodyRuntime.Total), null!));
+        Assert.Throws<ArgumentNullException>(() => body.StaticProperty(null!, nameof(BodyStatics.Value)));
+        Assert.Throws<MissingMemberException>(() => body.StaticProperty(typeof(BodyStatics), "Missing"));
+        Assert.Throws<ArgumentNullException>(() => body.Field(null!, nameof(BodyRuntime.Field)));
+        Assert.Throws<ArgumentException>(() => body.Field(target, ""));
+        Assert.Throws<MissingFieldException>(() => body.Field(target, "Missing"));
+        Assert.Throws<ArgumentException>(() => body.StaticField(typeof(BodyStatics), ""));
+        Assert.Throws<MissingFieldException>(() => body.StaticField(typeof(BodyStatics), "Missing"));
+        Assert.Throws<ArgumentNullException>(() => body.IsNull(null!));
+        Assert.Throws<ArgumentNullException>(() => body.If(null!, _ => { }));
+        Assert.Throws<ArgumentNullException>(() => body.If(body.Constant(true), null!));
+        Assert.Throws<ArgumentNullException>(() => body.Switch(null!, _ => { }));
+        Assert.Throws<ArgumentNullException>(() => body.Switch(body.Constant(1), null!));
+        Assert.Throws<ArgumentNullException>(() => body.Try(null!));
+        Assert.Throws<InvalidOperationException>(() => body.Try(_ => { }));
+        Assert.Throws<ArgumentNullException>(() => body.Using(null!, "resource", (_, _) => { }));
+        Assert.Throws<ArgumentException>(() => body.Using(target, "", (_, _) => { }));
+        Assert.Throws<InvalidOperationException>(() => body.Using(target, "resource", (_, _) => { }));
+        Assert.Throws<InvalidOperationException>(() => body.Return(body.Constant(1)));
+    }
+
     private static void SumWithForEach(IBeeMethodBodyBuilder body, IBeeValueExpression items)
     {
         var sum = body.DeclareLocal<int>("sum");
@@ -317,6 +361,9 @@ public sealed class BodyAndExpressionCoverageTests
         body.ForEach(items, "item", (item, loop) => loop.Assign(sum, loop.Add(sum, item)));
         body.Return(sum);
     }
+
+    private static BeeMethodBodyBuilder CreateBody(params (string Name, Type Type, int ArgumentIndex)[] parameters)
+        => new(new DynamicMethod("Coverage", typeof(void), parameters.Select(x => x.Type).ToArray()).GetILGenerator(), typeof(void), parameters);
 
     private static string NewAssemblyName()
         => $"DynaBee.Tests.BodyCoverage.{Guid.NewGuid():N}";
