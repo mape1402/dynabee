@@ -1,5 +1,6 @@
 namespace DynaBee.Tests.FluentApi;
 
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 using DynaBee.FluentApi;
@@ -82,6 +83,10 @@ public sealed class InvokerExpansionCoverageTests
         var instance = context.CreateInstance("Dispatch");
 
         Assert.Contains("parameters do not match", Assert.Throws<InvalidOperationException>(() => context.CreateBoundDelegate<Action<int>>("Dispatch", instance, "Add", new[] { typeof(int), typeof(int) })).Message);
+        Assert.Contains("has no Invoke method", Assert.Throws<InvalidOperationException>(() => context.CreateBoundDelegate(
+            typeof(Delegate), "Dispatch", instance, "Add", new[] { typeof(int), typeof(int) })).Message);
+        Assert.Contains("has no Invoke method", Assert.Throws<InvalidOperationException>(() => context.CreateOpenDelegate<Delegate>(
+            "Dispatch", "Add", new[] { typeof(int), typeof(int) })).Message);
         Assert.Contains("parameter 1", Assert.Throws<InvalidOperationException>(() => context.CreateOpenDelegate<Func<object, string, int, int>>("Dispatch", "Add", new[] { typeof(int), typeof(int) })).Message);
         Assert.Contains("return type", Assert.Throws<InvalidOperationException>(() => context.CreateOpenDelegate<Func<object, int, int, string>>("Dispatch", "Add", new[] { typeof(int), typeof(int) })).Message);
         Assert.Throws<ArgumentNullException>(() => context.CreateObjectAdapter2("Dispatch", instance, "Add", null!));
@@ -122,6 +127,33 @@ public sealed class InvokerExpansionCoverageTests
             context.CreateFactoryDelegate<Func<int, object>>("Ambiguous", new[] { typeof(int) }));
 
         Assert.Contains("More than one constructor matches", exception.Message);
+    }
+
+    [Fact]
+    public void Object_Adapter_Compilation_Rejects_Inconsistent_Internal_Arity()
+    {
+        var context = CreateContext();
+        var instance = context.CreateInstance("Dispatch");
+        var type = context.GetClrType("Dispatch");
+        var method = type.GetMethod("Add", new[] { typeof(int), typeof(int) })!;
+        var compile = typeof(AssemblyContextInvokerExtensions)
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(candidate => candidate.Name == "CompileObjectAdapter" && candidate.IsGenericMethodDefinition)
+            .MakeGenericMethod(typeof(Func<object, object>));
+
+        var exception = Assert.Throws<TargetInvocationException>(() => compile.Invoke(null, new object[]
+        {
+            context.Name,
+            "Dispatch",
+            "Add",
+            new[] { typeof(int), typeof(int) },
+            type,
+            method,
+            instance,
+            new[] { Expression.Parameter(typeof(object), "only") }
+        }));
+
+        Assert.Contains("requires exactly", exception.InnerException!.Message);
     }
 
     [Fact]

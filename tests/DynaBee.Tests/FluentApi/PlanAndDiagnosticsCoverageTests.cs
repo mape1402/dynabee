@@ -257,6 +257,17 @@ public sealed class PlanAndDiagnosticsCoverageTests
     }
 
     [Fact]
+    public void Generation_Plan_Fingerprint_Handles_Null_Values_From_Malformed_Extensions()
+    {
+        var append = typeof(DynaBeeGenerationPlan).GetMethod("Append", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var source = new System.Text.StringBuilder();
+
+        append.Invoke(null, new object[] { source, new string[] { "value", null! } });
+
+        Assert.Equal("5:value|0:|", source.ToString());
+    }
+
+    [Fact]
     public void Diagnostics_Resolve_All_Clr_Access_Modifier_Shapes()
     {
         var shapes = new AccessShapes();
