@@ -98,6 +98,11 @@ public sealed class FluentSurfaceAndContextCoverageTests
         Assert.True(firstKey.Equals(secondKey));
         Assert.True(firstKey.Equals((object)secondKey));
         Assert.False(firstKey.Equals(differentKey));
+        Assert.False(firstKey.Equals(new DynamicMethodKey("Value", new[] { typeof(string) })));
+        Assert.False(firstKey.Equals(new DynamicMethodKey("Value", new[] { typeof(int), typeof(string) })));
+        Assert.False(firstKey.Equals("Value"));
+        Assert.Throws<ArgumentNullException>(() => new DynamicMethodKey(null!, Type.EmptyTypes));
+        Assert.Throws<ArgumentNullException>(() => new DynamicMethodKey("Value", null!));
     }
 
     [Fact]
