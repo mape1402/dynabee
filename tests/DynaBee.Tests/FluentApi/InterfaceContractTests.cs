@@ -1,6 +1,7 @@
 namespace DynaBee.Tests.FluentApi;
 
 using DynaBee.FluentApi;
+using DynaBee.FluentApi.Generation;
 using System.Linq.Expressions;
 
 public sealed class InterfaceContractTests
@@ -75,6 +76,25 @@ public sealed class InterfaceContractTests
         store.Changed -= handler;
     }
 
+    [Fact]
+    public void GenerationPlan_Can_Declare_An_Interface_Contract()
+    {
+        var plan = new DynaBeeGenerationPlan("DynaBee.Tests.InterfaceContract.Plan")
+            .AddClass("PlannedCalculator", type => type
+                .ImplementInterface<ICalculator>(contract => contract
+                    .RequireExplicitImplementations()
+                    .Property(nameof(ICalculator.Name), property => property.WithGetter().WithSetter())
+                    .Method(nameof(ICalculator.Sum), method => method
+                        .EmitsBody(body => body.Return(body.Add(
+                            body.Parameter<int>("x"),
+                            body.Parameter<int>("y")))))));
+        var context = plan.ApplyTo(new BeeAssemblyBuilder(plan.AssemblyName)).Build();
+
+        var calculator = context.CreateInstance<ICalculator>("PlannedCalculator");
+
+        Assert.Equal(5, calculator.Sum(2, 3));
+    }
+
     public interface IContract
     {
         string Name { get; set; }
@@ -84,6 +104,13 @@ public sealed class InterfaceContractTests
         string Format(int value);
 
         string Format(decimal value);
+    }
+
+    public interface ICalculator
+    {
+        string Name { get; set; }
+
+        int Sum(int x, int y);
     }
 
     public interface IObservableStore
