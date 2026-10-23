@@ -13,6 +13,12 @@ namespace DynaBee.FluentApi.Body
         private readonly TypeContextBuilder _typeContextBuilder;
         private readonly Dictionary<string, BeeParameterExpression> _parameters;
         private readonly Dictionary<string, BeeLocalExpression> _locals = new(StringComparer.Ordinal);
+        private readonly Stack<BeeLoopScope> _loops = new();
+        private int _protectedRegionDepth;
+        private int _finallyDepth;
+        private LocalBuilder _deferredReturnLocal;
+        private Label _deferredReturnLabel;
+        private bool _hasDeferredReturn;
 
         public BeeMethodBodyBuilder(
             ILGenerator il,
@@ -183,7 +189,15 @@ namespace DynaBee.FluentApi.Body
 
             conditionExpression.EmitLoad(_il);
             _il.Emit(OpCodes.Brfalse, endLabel);
-            body(this);
+            _loops.Push(new BeeLoopScope(endLabel, startLabel, breakUsesLeave: false));
+            try
+            {
+                body(this);
+            }
+            finally
+            {
+                _loops.Pop();
+            }
             increment(this);
             _il.Emit(OpCodes.Br, startLabel);
             _il.MarkLabel(endLabel);
@@ -218,6 +232,7 @@ namespace DynaBee.FluentApi.Body
             var loopLabel = _il.DefineLabel();
             var conditionLabel = _il.DefineLabel();
             var finallyEndLabel = _il.DefineLabel();
+            var endLabel = _il.DefineLabel();
 
             sourceExpression.EmitLoad(_il);
             BeeIlConversions.EmitConvert(sourceExpression.Type, enumerableType, _il);
@@ -230,7 +245,15 @@ namespace DynaBee.FluentApi.Body
             _il.Emit(OpCodes.Ldloc, enumerator);
             _il.Emit(OpCodes.Callvirt, current);
             _il.Emit(OpCodes.Stloc, item.LocalBuilder);
-            body(item, this);
+            _loops.Push(new BeeLoopScope(endLabel, conditionLabel, breakUsesLeave: true));
+            try
+            {
+                body(item, this);
+            }
+            finally
+            {
+                _loops.Pop();
+            }
             _il.MarkLabel(conditionLabel);
             _il.Emit(OpCodes.Ldloc, enumerator);
             _il.Emit(OpCodes.Callvirt, moveNext);
@@ -242,7 +265,62 @@ namespace DynaBee.FluentApi.Body
             _il.Emit(OpCodes.Callvirt, dispose);
             _il.MarkLabel(finallyEndLabel);
             _il.EndExceptionBlock();
+            _il.MarkLabel(endLabel);
 
+            return this;
+        }
+
+        public IBeeMethodBodyBuilder While(
+            Func<IBeeMethodBodyBuilder, IBeeValueExpression> condition,
+            Action<IBeeMethodBodyBuilder> body)
+        {
+            if (condition == null)
+                throw new ArgumentNullException(nameof(condition));
+
+            if (body == null)
+                throw new ArgumentNullException(nameof(body));
+
+            var conditionLabel = _il.DefineLabel();
+            var endLabel = _il.DefineLabel();
+            _il.MarkLabel(conditionLabel);
+
+            var conditionExpression = RequireExpression(condition(this));
+            if (conditionExpression.Type != typeof(bool))
+                throw new InvalidOperationException($"Loop condition must be '{typeof(bool)}', not '{conditionExpression.Type}'.");
+
+            conditionExpression.EmitLoad(_il);
+            _il.Emit(OpCodes.Brfalse, endLabel);
+            _loops.Push(new BeeLoopScope(endLabel, conditionLabel, breakUsesLeave: false));
+            try
+            {
+                body(this);
+            }
+            finally
+            {
+                _loops.Pop();
+            }
+
+            _il.Emit(OpCodes.Br, conditionLabel);
+            _il.MarkLabel(endLabel);
+            return this;
+        }
+
+        public IBeeMethodBodyBuilder Break()
+        {
+            if (_loops.Count == 0)
+                throw new InvalidOperationException("Break can only be used inside a generated loop.");
+
+            var loop = _loops.Peek();
+            _il.Emit(loop.BreakUsesLeave ? OpCodes.Leave : OpCodes.Br, loop.BreakLabel);
+            return this;
+        }
+
+        public IBeeMethodBodyBuilder Continue()
+        {
+            if (_loops.Count == 0)
+                throw new InvalidOperationException("Continue can only be used inside a generated loop.");
+
+            _il.Emit(OpCodes.Br, _loops.Peek().ContinueLabel);
             return this;
         }
 
@@ -543,12 +621,184 @@ namespace DynaBee.FluentApi.Body
             return this;
         }
 
+        public IBeeMethodBodyBuilder Switch(IBeeValueExpression value, Action<IBeeSwitchBuilder> configure)
+        {
+            if (value == null)
+                throw new ArgumentNullException(nameof(value));
+
+            if (configure == null)
+                throw new ArgumentNullException(nameof(configure));
+
+            var valueExpression = RequireExpression(value);
+            var switchBuilder = new BeeSwitchBuilder();
+            configure(switchBuilder);
+
+            var endLabel = _il.DefineLabel();
+            var caseLabels = switchBuilder.Cases.Select(_ => _il.DefineLabel()).ToArray();
+            var defaultLabel = _il.DefineLabel();
+
+            for (var i = 0; i < switchBuilder.Cases.Count; i++)
+            {
+                var @case = switchBuilder.Cases[i];
+                var caseValue = new BeeConstantExpression(@case.Value, valueExpression.Type);
+                new BeeComparisonExpression(valueExpression, caseValue, equal: true).EmitLoad(_il);
+                _il.Emit(OpCodes.Brtrue, caseLabels[i]);
+            }
+
+            _il.Emit(OpCodes.Br, switchBuilder.DefaultBody == null ? endLabel : defaultLabel);
+            for (var i = 0; i < switchBuilder.Cases.Count; i++)
+            {
+                _il.MarkLabel(caseLabels[i]);
+                switchBuilder.Cases[i].Body(this);
+                _il.Emit(OpCodes.Br, endLabel);
+            }
+
+            if (switchBuilder.DefaultBody != null)
+            {
+                _il.MarkLabel(defaultLabel);
+                switchBuilder.DefaultBody(this);
+            }
+
+            _il.MarkLabel(endLabel);
+            return this;
+        }
+
+        public IBeeMethodBodyBuilder Try(
+            Action<IBeeMethodBodyBuilder> tryBody,
+            Action<IBeeExceptionBuilder> configureCatches = null,
+            Action<IBeeMethodBodyBuilder> finallyBody = null)
+        {
+            if (tryBody == null)
+                throw new ArgumentNullException(nameof(tryBody));
+
+            var catches = new BeeExceptionBuilder();
+            configureCatches?.Invoke(catches);
+            if (catches.Clauses.Count == 0 && finallyBody == null)
+                throw new InvalidOperationException("A try statement must include at least one catch clause or a finally body.");
+
+            _il.BeginExceptionBlock();
+            _protectedRegionDepth++;
+            try
+            {
+                tryBody(this);
+            }
+            finally
+            {
+                _protectedRegionDepth--;
+            }
+
+            foreach (var clause in catches.Clauses)
+            {
+                _il.BeginCatchBlock(clause.ExceptionType);
+                var exception = new BeeLocalExpression(clause.ExceptionName, clause.ExceptionType, _il.DeclareLocal(clause.ExceptionType));
+                _il.Emit(OpCodes.Stloc, exception.LocalBuilder);
+                _protectedRegionDepth++;
+                try
+                {
+                    clause.Body(exception, this);
+                }
+                finally
+                {
+                    _protectedRegionDepth--;
+                }
+            }
+
+            if (finallyBody != null)
+            {
+                _il.BeginFinallyBlock();
+                _finallyDepth++;
+                try
+                {
+                    finallyBody(this);
+                }
+                finally
+                {
+                    _finallyDepth--;
+                }
+            }
+
+            _il.EndExceptionBlock();
+            return this;
+        }
+
+        public IBeeMethodBodyBuilder Using(
+            IBeeValueExpression resource,
+            string resourceName,
+            Action<IBeeLocal, IBeeMethodBodyBuilder> body)
+        {
+            if (resource == null)
+                throw new ArgumentNullException(nameof(resource));
+
+            if (string.IsNullOrWhiteSpace(resourceName))
+                throw new ArgumentException(nameof(resourceName));
+
+            if (body == null)
+                throw new ArgumentNullException(nameof(body));
+
+            var resourceExpression = RequireExpression(resource);
+            if (!typeof(IDisposable).IsAssignableFrom(resourceExpression.Type))
+                throw new InvalidOperationException($"Using resource type '{resourceExpression.Type}' must implement '{typeof(IDisposable)}'.");
+
+            var local = DeclareLocal(resourceName, resourceExpression.Type) as BeeLocalExpression;
+            Assign(local, resourceExpression);
+
+            _il.BeginExceptionBlock();
+            _protectedRegionDepth++;
+            try
+            {
+                body(local, this);
+            }
+            finally
+            {
+                _protectedRegionDepth--;
+            }
+
+            _il.BeginFinallyBlock();
+            _finallyDepth++;
+            try
+            {
+                var skipDispose = _il.DefineLabel();
+                if (!resourceExpression.Type.IsValueType)
+                {
+                    _il.Emit(OpCodes.Ldloc, local.LocalBuilder);
+                    _il.Emit(OpCodes.Brfalse, skipDispose);
+                }
+
+                _il.Emit(OpCodes.Ldloc, local.LocalBuilder);
+                if (resourceExpression.Type.IsValueType)
+                    _il.Emit(OpCodes.Box, resourceExpression.Type);
+                _il.Emit(OpCodes.Callvirt, typeof(IDisposable).GetMethod(nameof(IDisposable.Dispose))!);
+                _il.MarkLabel(skipDispose);
+            }
+            finally
+            {
+                _finallyDepth--;
+            }
+
+            _il.EndExceptionBlock();
+            return this;
+        }
+
+        public IBeeMethodBodyBuilder Throw(IBeeValueExpression exception)
+        {
+            if (exception == null)
+                throw new ArgumentNullException(nameof(exception));
+
+            var exceptionExpression = RequireExpression(exception);
+            if (!typeof(Exception).IsAssignableFrom(exceptionExpression.Type))
+                throw new InvalidOperationException($"Thrown value type '{exceptionExpression.Type}' must derive from '{typeof(Exception)}'.");
+
+            exceptionExpression.EmitLoad(_il);
+            _il.Emit(OpCodes.Throw);
+            return this;
+        }
+
         public IBeeMethodBodyBuilder Return()
         {
             if (_returnType != typeof(void))
                 throw new InvalidOperationException("A return value is required for non-void methods.");
 
-            _il.Emit(OpCodes.Ret);
+            EmitReturn();
             HasReturn = true;
             return this;
         }
@@ -561,10 +811,61 @@ namespace DynaBee.FluentApi.Body
             if (_returnType == typeof(void))
                 throw new InvalidOperationException("Void methods cannot return a value.");
 
-            EmitLoadWithConversion(_il, RequireExpression(value), _returnType);
-            _il.Emit(OpCodes.Ret);
+            var valueExpression = RequireExpression(value);
+            if (_protectedRegionDepth == 0)
+            {
+                EmitLoadWithConversion(_il, valueExpression, _returnType);
+                _il.Emit(OpCodes.Ret);
+            }
+            else
+            {
+                if (_finallyDepth != 0)
+                    throw new InvalidOperationException("Returning from a finally body is not supported.");
+
+                _deferredReturnLocal ??= _il.DeclareLocal(_returnType);
+                EmitLoadWithConversion(_il, valueExpression, _returnType);
+                _il.Emit(OpCodes.Stloc, _deferredReturnLocal);
+                _il.Emit(OpCodes.Leave, GetDeferredReturnLabel());
+            }
+
             HasReturn = true;
             return this;
+        }
+
+        internal void Complete()
+        {
+            if (!_hasDeferredReturn)
+                return;
+
+            _il.MarkLabel(_deferredReturnLabel);
+            if (_returnType != typeof(void))
+                _il.Emit(OpCodes.Ldloc, _deferredReturnLocal);
+            _il.Emit(OpCodes.Ret);
+        }
+
+        private void EmitReturn()
+        {
+            if (_protectedRegionDepth == 0)
+            {
+                _il.Emit(OpCodes.Ret);
+                return;
+            }
+
+            if (_finallyDepth != 0)
+                throw new InvalidOperationException("Returning from a finally body is not supported.");
+
+            _il.Emit(OpCodes.Leave, GetDeferredReturnLabel());
+        }
+
+        private Label GetDeferredReturnLabel()
+        {
+            if (!_hasDeferredReturn)
+            {
+                _deferredReturnLabel = _il.DefineLabel();
+                _hasDeferredReturn = true;
+            }
+
+            return _deferredReturnLabel;
         }
 
         internal static void EmitLoadWithConversion(ILGenerator il, BeeValueExpression value, Type targetType)
@@ -742,6 +1043,22 @@ namespace DynaBee.FluentApi.Body
         private static string FormatMethodSignature(string methodName, IReadOnlyList<Type> parameterTypes)
             => $"{methodName}({string.Join(", ", parameterTypes.Select(x => x.FullName ?? x.Name))})";
 
+        private sealed class BeeLoopScope
+        {
+            public BeeLoopScope(Label breakLabel, Label continueLabel, bool breakUsesLeave)
+            {
+                BreakLabel = breakLabel;
+                ContinueLabel = continueLabel;
+                BreakUsesLeave = breakUsesLeave;
+            }
+
+            public Label BreakLabel { get; }
+
+            public Label ContinueLabel { get; }
+
+            public bool BreakUsesLeave { get; }
+        }
+
         private static BeeValueExpression RequireExpression(IBeeValueExpression expression)
             => expression as BeeValueExpression
                ?? throw new NotSupportedException("Custom value expression implementations are not supported.");
@@ -749,6 +1066,103 @@ namespace DynaBee.FluentApi.Body
         private static BeeAssignableExpression RequireAssignable(IBeeAssignableExpression expression)
             => expression as BeeAssignableExpression
                ?? throw new NotSupportedException("Custom assignable expression implementations are not supported.");
+    }
+
+    internal sealed class BeeExceptionBuilder : IBeeExceptionBuilder
+    {
+        private readonly List<BeeCatchClause> _clauses = new();
+
+        internal IReadOnlyList<BeeCatchClause> Clauses => _clauses;
+
+        public IBeeExceptionBuilder Catch(Type exceptionType, string exceptionName, Action<IBeeLocal, IBeeMethodBodyBuilder> body)
+        {
+            if (exceptionType == null)
+                throw new ArgumentNullException(nameof(exceptionType));
+
+            if (!typeof(Exception).IsAssignableFrom(exceptionType))
+                throw new ArgumentException($"Catch type '{exceptionType}' must derive from '{typeof(Exception)}'.", nameof(exceptionType));
+
+            if (string.IsNullOrWhiteSpace(exceptionName))
+                throw new ArgumentException(nameof(exceptionName));
+
+            if (body == null)
+                throw new ArgumentNullException(nameof(body));
+
+            if (_clauses.Any(x => x.ExceptionType == exceptionType))
+                throw new InvalidOperationException($"A catch clause for '{exceptionType}' is already configured.");
+
+            _clauses.Add(new BeeCatchClause(exceptionType, exceptionName, body));
+            return this;
+        }
+
+        public IBeeExceptionBuilder Catch<TException>(string exceptionName, Action<IBeeLocal, IBeeMethodBodyBuilder> body)
+            where TException : Exception
+            => Catch(typeof(TException), exceptionName, body);
+    }
+
+    internal sealed class BeeCatchClause
+    {
+        public BeeCatchClause(Type exceptionType, string exceptionName, Action<IBeeLocal, IBeeMethodBodyBuilder> body)
+        {
+            ExceptionType = exceptionType;
+            ExceptionName = exceptionName;
+            Body = body;
+        }
+
+        public Type ExceptionType { get; }
+
+        public string ExceptionName { get; }
+
+        public Action<IBeeLocal, IBeeMethodBodyBuilder> Body { get; }
+    }
+
+    internal sealed class BeeSwitchBuilder : IBeeSwitchBuilder
+    {
+        private readonly List<BeeSwitchCase> _cases = new();
+
+        internal IReadOnlyList<BeeSwitchCase> Cases => _cases;
+
+        internal Action<IBeeMethodBodyBuilder> DefaultBody { get; private set; }
+
+        public IBeeSwitchBuilder Case(object value, Action<IBeeMethodBodyBuilder> body)
+        {
+            if (body == null)
+                throw new ArgumentNullException(nameof(body));
+
+            if (_cases.Any(x => Equals(x.Value, value)))
+                throw new InvalidOperationException($"Switch case '{value ?? "null"}' is already configured.");
+
+            _cases.Add(new BeeSwitchCase(value, body));
+            return this;
+        }
+
+        public IBeeSwitchBuilder Case<T>(T value, Action<IBeeMethodBodyBuilder> body)
+            => Case((object)value, body);
+
+        public IBeeSwitchBuilder Default(Action<IBeeMethodBodyBuilder> body)
+        {
+            if (body == null)
+                throw new ArgumentNullException(nameof(body));
+
+            if (DefaultBody != null)
+                throw new InvalidOperationException("The switch default branch is already configured.");
+
+            DefaultBody = body;
+            return this;
+        }
+    }
+
+    internal sealed class BeeSwitchCase
+    {
+        public BeeSwitchCase(object value, Action<IBeeMethodBodyBuilder> body)
+        {
+            Value = value;
+            Body = body;
+        }
+
+        public object Value { get; }
+
+        public Action<IBeeMethodBodyBuilder> Body { get; }
     }
 
     internal abstract class BeeValueExpression : IBeeValueExpression

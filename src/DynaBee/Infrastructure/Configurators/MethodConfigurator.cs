@@ -128,6 +128,8 @@ namespace DynaBee.Infrastructure.Configurators
                 if (!bodyBuilder.HasReturn)
                     EmitDefaultBody(il, returnType);
 
+                bodyBuilder.Complete();
+
                 return;
             }
 

@@ -147,6 +147,28 @@ namespace DynaBee.FluentApi.Body
             Action<IBeeLocal, IBeeMethodBodyBuilder> body);
 
         /// <summary>
+        /// Emits a while loop statement.
+        /// </summary>
+        /// <param name="condition">Loop condition expression factory.</param>
+        /// <param name="body">Loop body.</param>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder While(
+            Func<IBeeMethodBodyBuilder, IBeeValueExpression> condition,
+            Action<IBeeMethodBodyBuilder> body);
+
+        /// <summary>
+        /// Exits the innermost generated loop.
+        /// </summary>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder Break();
+
+        /// <summary>
+        /// Continues the innermost generated loop.
+        /// </summary>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder Continue();
+
+        /// <summary>
         /// Creates an instance method call expression.
         /// </summary>
         /// <param name="instance">Instance expression used as the call target.</param>
@@ -409,6 +431,45 @@ namespace DynaBee.FluentApi.Body
         /// <param name="whenFalse">Optional body emitted when the condition is false.</param>
         /// <returns>The same method body builder.</returns>
         IBeeMethodBodyBuilder If(IBeeValueExpression condition, Action<IBeeMethodBodyBuilder> whenTrue, Action<IBeeMethodBodyBuilder> whenFalse = null);
+
+        /// <summary>
+        /// Emits a switch statement over a value expression.
+        /// </summary>
+        /// <param name="value">Value to evaluate.</param>
+        /// <param name="configure">Switch branch configuration.</param>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder Switch(IBeeValueExpression value, Action<IBeeSwitchBuilder> configure);
+
+        /// <summary>
+        /// Emits a try/catch/finally statement.
+        /// </summary>
+        /// <param name="tryBody">Protected body.</param>
+        /// <param name="configureCatches">Optional catch clause configuration.</param>
+        /// <param name="finallyBody">Optional finally body.</param>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder Try(
+            Action<IBeeMethodBodyBuilder> tryBody,
+            Action<IBeeExceptionBuilder> configureCatches = null,
+            Action<IBeeMethodBodyBuilder> finallyBody = null);
+
+        /// <summary>
+        /// Emits a using-style protected scope and disposes the resource in a finally clause.
+        /// </summary>
+        /// <param name="resource">Resource expression that implements <see cref="IDisposable"/>.</param>
+        /// <param name="resourceName">Generated local variable name.</param>
+        /// <param name="body">Scope body.</param>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder Using(
+            IBeeValueExpression resource,
+            string resourceName,
+            Action<IBeeLocal, IBeeMethodBodyBuilder> body);
+
+        /// <summary>
+        /// Throws an exception value.
+        /// </summary>
+        /// <param name="exception">Exception expression.</param>
+        /// <returns>The same method body builder.</returns>
+        IBeeMethodBodyBuilder Throw(IBeeValueExpression exception);
 
         /// <summary>
         /// Returns from a void method.
