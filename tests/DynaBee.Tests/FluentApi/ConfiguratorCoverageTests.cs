@@ -470,6 +470,23 @@ public sealed class ConfiguratorCoverageTests
         Assert.Equal(7, type.GetMethod("Unbox")!.Invoke(instance, new object[] { 7 }));
     }
 
+    [Fact]
+    public void Expression_Emitter_Context_Exposes_The_Declared_Parameter_Types()
+    {
+        var dynamicMethod = new DynamicMethod("Coverage", typeof(void), Type.EmptyTypes);
+        var contextType = typeof(ExpressionIlEmitter).GetNestedType("EmitContext", BindingFlags.NonPublic)!;
+        var context = Activator.CreateInstance(
+            contextType,
+            dynamicMethod.GetILGenerator(),
+            Array.Empty<ParameterExpression>(),
+            new[] { typeof(int), typeof(string) },
+            Array.Empty<int>())!;
+
+        var parameterTypes = (IReadOnlyList<Type>)contextType.GetProperty("ParameterTypes")!.GetValue(context)!;
+
+        Assert.Equal(new[] { typeof(int), typeof(string) }, parameterTypes);
+    }
+
     private static void BuildInvalid(Action<BeeClassBuilder> configure)
         => new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("Invalid", type =>
