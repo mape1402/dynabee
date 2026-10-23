@@ -188,6 +188,15 @@ public sealed class MethodBodyAdvancedCoverageTests
 
     }
 
+    [Fact]
+    public void MethodBodyBuilder_Infers_The_Runtime_Type_For_Object_Constants()
+    {
+        var body = CreateBody();
+
+        Assert.Equal(typeof(string), body.Constant((object)"value").Type);
+        Assert.Equal(typeof(object), body.Constant((object)null!).Type);
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");

@@ -96,11 +96,15 @@ public sealed class DependencyInjectionCoverageTests
 
         var genericProfileRegistry = new AssemblyContextRegistry(CoverageProfile.DefaultAssemblyName);
         Assert.Same(genericProfileRegistry, genericProfileRegistry.AddProfile<CoverageProfile>());
+        IAssemblyContextRegistry profileRegistry = new AssemblyContextRegistry(CoverageProfile.DefaultAssemblyName);
+        Assert.Same(profileRegistry, AssemblyContextRegistryExtensions.AddProfile<CoverageProfile>(profileRegistry));
         var catalog = new DynaBeeAssemblyCatalog(
             new Dictionary<string, IAssemblyContextRegistry> { [assemblyName] = registry },
             new Dictionary<string, IAssemblyContextProvider> { [assemblyName] = provider });
 
         Assert.Equal(new[] { assemblyName }, catalog.AssemblyNames);
+        Assert.Equal(new[] { registry }, catalog.Registries);
+        Assert.Equal(new[] { provider }, catalog.Providers);
         Assert.Same(registry, catalog.GetRegistry(assemblyName));
         Assert.Same(provider, catalog.GetProvider(assemblyName));
         Assert.Same(provider.Current, catalog.GetContext(assemblyName));
@@ -122,6 +126,9 @@ public sealed class DependencyInjectionCoverageTests
         var registry = new AssemblyContextRegistry(assemblyName);
 
         Assert.Empty(DynaBeeProfileDiscoveryExtensions.DiscoverProfilesFromAssemblies());
+        Assert.Contains(
+            DynaBeeProfileDiscoveryExtensions.DiscoverProfilesFromCurrentAppDomain(),
+            profile => profile.GetType() == typeof(DiscoverableCoverageProfile));
         Assert.Contains(discovered, profile => profile.GetType() == typeof(DiscoverableCoverageProfile));
         Assert.Same(registry, registry.AddProfilesFromAssemblies(assembly));
         Assert.NotNull(registry.BuildSnapshot().Find("Discovered"));
