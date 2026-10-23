@@ -108,6 +108,23 @@ public sealed class ContextInfrastructureCoverageTests
         Assert.Throws<ArgumentNullException>(() => new ElementContextBuilder("Element", ElementType.Field, _ => { }, null!));
     }
 
+    [Fact]
+    public void Contexts_Handle_Default_Metadata_Typed_Mismatches_And_Ambiguous_Elements()
+    {
+        var first = new ElementContext("Same", ElementType.Field);
+        var second = new ElementContext("Same", ElementType.Property);
+        var type = new TypeContext("Type", typeof(Contract), new IElementContext[] { first, second });
+        var assembly = new AssemblyContext("Assembly", typeof(Contract).Assembly, new[] { type });
+
+        Assert.Empty(first.Metadata);
+        Assert.Empty(type.Metadata);
+        Assert.Empty(assembly.Metadata);
+        Assert.False(type.TryGetMetadata(new BeeMetadataKey<int>("rank"), out _));
+        Assert.False(assembly.TryGetMetadata(new BeeMetadataKey<string>("rank"), out _));
+        Assert.Throws<InvalidOperationException>(() => type.FindOne("Same"));
+        Assert.Single(assembly.Find(context => context.Name == "Type"));
+    }
+
     public interface Contract
     {
     }
