@@ -728,6 +728,7 @@ namespace DynaBee.FluentApi.Body
             if (finallyBody != null)
             {
                 _il.BeginFinallyBlock();
+                _protectedRegionDepth++;
                 _finallyDepth++;
                 try
                 {
@@ -736,6 +737,7 @@ namespace DynaBee.FluentApi.Body
                 finally
                 {
                     _finallyDepth--;
+                    _protectedRegionDepth--;
                 }
             }
 
