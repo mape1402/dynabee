@@ -138,6 +138,26 @@ public sealed class ConfiguratorCoverageTests
     }
 
     [Fact]
+    public void Fluent_Contracts_Use_Fallback_Names_For_Reflected_Parameters_Without_Metadata_Names()
+    {
+        var (baseType, interfaceType) = CreateUnnamedParameterContracts();
+        var baseMethod = baseType.GetMethod("Transform")!;
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("UnnamedOverride", type => type
+                .Inherits(baseType)
+                .OverrideMethod(baseMethod, method => method
+                    .EmitsBody(body => body.Return(body.Parameter<int>("arg0")))))
+            .AddClass("UnnamedImplementation", type => type
+                .ImplementInterface(interfaceType))
+            .Build();
+
+        Assert.Null(baseMethod.GetParameters()[0].Name);
+        Assert.Equal(8, baseType.GetMethod("Transform")!.Invoke(context.CreateInstance("UnnamedOverride"), new object[] { 8 }));
+        Assert.Equal(0, interfaceType.GetMethod("Transform")!.Invoke(context.CreateInstance("UnnamedImplementation"), new object[] { 8 }));
+        Assert.Throws<ArgumentNullException>(() => new BeeClassBuilder(new ClassConfigurator("Internal", ClassAccessModifier.Public)).AddConfiguredMethod(null!));
+    }
+
+    [Fact]
     public void PropertyOverrideConfigurator_Rejects_Unrelated_Base_Properties_And_Null_Contracts()
     {
         var property = typeof(OverrideBase).GetProperty(nameof(OverrideBase.Number))!;
@@ -764,6 +784,33 @@ public sealed class ConfiguratorCoverageTests
         var module = assembly.DefineDynamicModule("Validation");
         var assemblyContext = new AssemblyContextBuilder("Validation", assembly, module);
         return (TypeContextBuilder)assemblyContext.AddTypeBuilder(name, module.DefineType(name, TypeAttributes.Public, baseType));
+    }
+
+    private static (Type BaseType, Type InterfaceType) CreateUnnamedParameterContracts()
+    {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(NewAssemblyName()), AssemblyBuilderAccess.Run);
+        var module = assembly.DefineDynamicModule("UnnamedParameters");
+
+        var baseBuilder = module.DefineType("UnnamedBase", TypeAttributes.Public, typeof(object));
+        var baseMethod = baseBuilder.DefineMethod(
+            "Transform",
+            MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.NewSlot,
+            typeof(int),
+            new[] { typeof(int) });
+        var baseIl = baseMethod.GetILGenerator();
+        baseIl.Emit(OpCodes.Ldarg_1);
+        baseIl.Emit(OpCodes.Ret);
+
+        var interfaceBuilder = module.DefineType(
+            "IUnnamedContract",
+            TypeAttributes.Public | TypeAttributes.Interface | TypeAttributes.Abstract);
+        interfaceBuilder.DefineMethod(
+            "Transform",
+            MethodAttributes.Public | MethodAttributes.Abstract | MethodAttributes.Virtual | MethodAttributes.NewSlot,
+            typeof(int),
+            new[] { typeof(int) });
+
+        return (baseBuilder.CreateTypeInfo()!.AsType(), interfaceBuilder.CreateTypeInfo()!.AsType());
     }
 
     private static string NewAssemblyName()
