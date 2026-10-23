@@ -51,7 +51,11 @@ namespace DynaBee.Infrastructure.Configurators
                     return;
                 case UnaryExpression unary when unary.NodeType == ExpressionType.Convert || unary.NodeType == ExpressionType.ConvertChecked:
                     EmitExpression(unary.Operand, context);
-                    EmitConvert(unary.Operand.Type, unary.Type, context.Il);
+                    // Decimal's runtime conversion helpers remain on the numeric conversion path.
+                    if (unary.Method != null && unary.Method.DeclaringType != typeof(decimal))
+                        context.Il.Emit(OpCodes.Call, unary.Method);
+                    else
+                        EmitConvert(unary.Operand.Type, unary.Type, context.Il);
                     return;
                 case BinaryExpression binary:
                     EmitBinary(binary, context);
