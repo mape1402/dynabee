@@ -312,6 +312,30 @@ public sealed class MethodBodyAdvancedCoverageTests
     }
 
     [Fact]
+    public void MethodBodyBuilder_Handles_Null_Params_And_Rejects_Value_Returns_From_Finally()
+    {
+        var body = CreateBody(("text", typeof(string), 0));
+        var valueReturn = new BeeMethodBodyBuilder(
+            new DynamicMethod("FinallyReturn", typeof(int), Type.EmptyTypes).GetILGenerator(),
+            typeof(int),
+            Array.Empty<(string Name, Type Type, int ArgumentIndex)>());
+
+        Assert.Equal(typeof(RefProbe), body.New(typeof(RefProbe), (IBeeValueExpression[])null!).Type);
+        Assert.Equal(typeof(string), body.Call(
+            body.Parameter<string>("text"),
+            typeof(string).GetMethod(nameof(string.ToString), Type.EmptyTypes)!,
+            (IBeeValueExpression[])null!).Type);
+        Assert.Equal(typeof(Guid), body.StaticCall(
+            typeof(Guid).GetMethod(nameof(Guid.NewGuid), Type.EmptyTypes)!,
+            (IBeeValueExpression[])null!).Type);
+        Assert.Equal(typeof(string), body.Concat((IBeeValueExpression[])null!).Type);
+
+        Assert.Throws<InvalidOperationException>(() => valueReturn.Try(
+            tryBody => tryBody.Evaluate(tryBody.Constant(1)),
+            finallyBody: finallyBody => finallyBody.Return(finallyBody.Constant(2))));
+    }
+
+    [Fact]
     public void GeneratedBodies_Use_Foreach_Break_And_Null_Base_Call_Arguments()
     {
         var baseMethod = typeof(BaseCallTarget).GetMethod(nameof(BaseCallTarget.GetValue))!;
