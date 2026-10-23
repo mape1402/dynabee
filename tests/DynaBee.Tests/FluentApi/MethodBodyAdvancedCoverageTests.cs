@@ -329,6 +329,14 @@ public sealed class MethodBodyAdvancedCoverageTests
             typeof(Guid).GetMethod(nameof(Guid.NewGuid), Type.EmptyTypes)!,
             (IBeeValueExpression[])null!).Type);
         Assert.Equal(typeof(string), body.Concat((IBeeValueExpression[])null!).Type);
+        Assert.Throws<NotSupportedException>(() => body.New(typeof(RefProbe), new ExternalValueExpression()));
+        Assert.Throws<NotSupportedException>(() => body.Call(
+            body.Parameter<string>("text"),
+            typeof(string).GetMethod(nameof(string.ToString), Type.EmptyTypes)!,
+            new ExternalValueExpression()));
+        Assert.Throws<NotSupportedException>(() => body.StaticCall(
+            typeof(Guid).GetMethod(nameof(Guid.NewGuid), Type.EmptyTypes)!,
+            new ExternalValueExpression()));
 
         Assert.Throws<InvalidOperationException>(() => valueReturn.Try(
             tryBody => tryBody.Evaluate(tryBody.Constant(1)),
