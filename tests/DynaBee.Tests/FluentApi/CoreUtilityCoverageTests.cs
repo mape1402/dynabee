@@ -107,6 +107,14 @@ public sealed class CoreUtilityCoverageTests
         Assert.Throws<ArgumentNullException>(() => new BeePropertyOverrideBuilder(null!));
         Assert.Throws<ArgumentNullException>(() => new BeePropertyAccessorBuilder().Emits(null!));
         Assert.Throws<ArgumentNullException>(() => new BeePropertyAccessorBuilder().EmitsBody(null!));
+        Assert.Throws<ArgumentNullException>(() => new BeeInterfaceContractBuilder(null!, null!, false));
+        Assert.Throws<ArgumentNullException>(() => new BeeConstructorBuilder().CallsBase(
+            (System.Reflection.ConstructorInfo)null!,
+            (Action<BeeConstructorBaseCallBuilder>)null!));
+
+        new BeeAssemblyBuilder($"DynaBee.Tests.Contract.{Guid.NewGuid():N}")
+            .AddClass("Generated", type => Assert.Throws<ArgumentNullException>(() =>
+                new BeeInterfaceContractBuilder(type, null!, false)));
     }
 
     public sealed class UtilityModel
