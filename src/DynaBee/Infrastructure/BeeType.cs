@@ -28,6 +28,15 @@
             IsReference = false;
         }
 
+        private BeeType(string genericParameterName, bool genericParameter)
+        {
+            GenericParameterName = string.IsNullOrWhiteSpace(genericParameterName)
+                ? throw new ArgumentNullException(nameof(genericParameterName))
+                : genericParameterName;
+            IsGenericParameter = genericParameter;
+            IsReference = false;
+        }
+
         /// <summary>
         /// Gets a value indicating whether the <see cref="BeeType"/> represents a reference by name rather than a concrete <see cref="Type"/>.
         /// </summary>
@@ -44,6 +53,16 @@
         internal Type ClrType { get; }
 
         /// <summary>
+        /// Gets whether this instance represents a generic parameter declared by its owning generated type.
+        /// </summary>
+        internal bool IsGenericParameter { get; }
+
+        /// <summary>
+        /// Gets the logical generic parameter name when <see cref="IsGenericParameter"/> is true.
+        /// </summary>
+        internal string GenericParameterName { get; }
+
+        /// <summary>
         /// Implicitly converts a string type name to a <see cref="BeeType"/>.
         /// </summary>
         /// <param name="referenceType">The string reference type name.</param>
@@ -57,6 +76,14 @@
         /// <returns>A reference-based <see cref="BeeType"/>.</returns>
         public static BeeType Parse(string referenceType)
             => new BeeType(referenceType);
+
+        /// <summary>
+        /// Creates a type reference to a generic parameter declared by the current generated type.
+        /// </summary>
+        /// <param name="name">Generic parameter name.</param>
+        /// <returns>A generic-parameter type reference.</returns>
+        public static BeeType GenericParameter(string name)
+            => new BeeType(name, genericParameter: true);
 
         /// <summary>
         /// Tries to create a <see cref="BeeType"/> from a reference type name.
@@ -103,7 +130,9 @@
         /// Thrown if <paramref name="beeType"/> is not a CLR type.
         /// </exception>
         public static implicit operator Type(BeeType beeType)
-            => !beeType.IsReference ? beeType.ClrType : throw new InvalidOperationException("BeeType isn't a ClrType");
+            => !beeType.IsReference && !beeType.IsGenericParameter
+                ? beeType.ClrType
+                : throw new InvalidOperationException("BeeType isn't a ClrType");
 
     }
 }

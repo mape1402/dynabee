@@ -44,6 +44,16 @@ namespace DynaBee.FluentApi
         BeeAssemblyBuilder AddClass(string name, ClassAccessModifier accessModifier, Action<BeeClassBuilder> configure = null);
 
         /// <summary>
+        /// Adds a generic dynamic class using public visibility.
+        /// </summary>
+        BeeAssemblyBuilder AddGenericClass(string name, Action<BeeGenericClassBuilder> configure);
+
+        /// <summary>
+        /// Adds a generic dynamic class.
+        /// </summary>
+        BeeAssemblyBuilder AddGenericClass(string name, ClassAccessModifier accessModifier, Action<BeeGenericClassBuilder> configure = null);
+
+        /// <summary>
         /// Adds a dynamic interface using public visibility.
         /// </summary>
         BeeAssemblyBuilder AddInterface(string name, Action<BeeInterfaceBuilder> configure);

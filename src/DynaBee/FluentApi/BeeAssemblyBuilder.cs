@@ -104,6 +104,32 @@ namespace DynaBee.FluentApi
         }
 
         /// <summary>
+        /// Adds a generic dynamic class.
+        /// </summary>
+        /// <param name="name">Class name.</param>
+        /// <param name="configure">Generic class configuration.</param>
+        /// <returns>The same assembly builder.</returns>
+        public BeeAssemblyBuilder AddGenericClass(string name, Action<BeeGenericClassBuilder> configure)
+            => AddGenericClass(name, ClassAccessModifier.Public, configure);
+
+        /// <summary>
+        /// Adds a generic dynamic class with an explicit access modifier.
+        /// </summary>
+        /// <param name="name">Class name.</param>
+        /// <param name="accessModifier">Class visibility.</param>
+        /// <param name="configure">Generic class configuration.</param>
+        /// <returns>The same assembly builder.</returns>
+        public BeeAssemblyBuilder AddGenericClass(string name, ClassAccessModifier accessModifier, Action<BeeGenericClassBuilder> configure = null)
+        {
+            var classConfigurator = new ClassConfigurator(name, accessModifier);
+            var classBuilder = new BeeClassBuilder(classConfigurator);
+            var genericBuilder = new BeeGenericClassBuilder(classBuilder, classConfigurator);
+            configure?.Invoke(genericBuilder);
+            _assemblyConfigurator.AddTypeBuilder(classConfigurator);
+            return this;
+        }
+
+        /// <summary>
         /// Adds a dynamic interface.
         /// </summary>
         public BeeAssemblyBuilder AddInterface(string name, Action<BeeInterfaceBuilder> configure)

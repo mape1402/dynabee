@@ -27,9 +27,7 @@ namespace DynaBee.Infrastructure.Configurators
         private void BuildAction(ITypeContextBuilder typeContextBuilder)
         {
             var access = _accessModifier.IsDefault ? FieldAccessModifier.Private : _accessModifier;
-            var clrType = _type.IsReference
-                ? typeContextBuilder.AssemblyBuilderContext.GetTypeBuilder((string)_type).TypeBuilder
-                : (Type)_type;
+            var clrType = _type.Resolve(typeContextBuilder);
 
             var fieldBuilder = typeContextBuilder.TypeBuilder.DefineField(_name, clrType, access.Attributes);
 

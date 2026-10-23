@@ -40,9 +40,7 @@ namespace DynaBee.Infrastructure.Configurators
 
         private void BuildAction(ITypeContextBuilder typeContextBuilder)
         {
-            var clrType = _type.IsReference
-                ? typeContextBuilder.AssemblyBuilderContext.GetTypeBuilder((string)_type).TypeBuilder
-                : (Type)_type;
+            var clrType = _type.Resolve(typeContextBuilder);
 
             var propertyBuilder = typeContextBuilder.TypeBuilder.DefineProperty(_name, PropertyAttributes.None, clrType, null);
 
