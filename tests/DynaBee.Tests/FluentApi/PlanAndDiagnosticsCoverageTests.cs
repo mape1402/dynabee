@@ -98,6 +98,8 @@ public sealed class PlanAndDiagnosticsCoverageTests
         Assert.Throws<ArgumentNullException>(() => builder.RegisterAs(null!));
         Assert.Throws<ArgumentException>(() => builder.WithMetadata("", "value"));
         Assert.Throws<ArgumentNullException>(() => builder.WithMetadata("key", null!));
+        Assert.Throws<ArgumentNullException>(() => builder.OverrideMethod(null!));
+        Assert.Throws<ArgumentNullException>(() => builder.OverrideProperty(null!, _ => { }));
 
         var plan = new DynaBeeGenerationPlan("DynaBee.Tests.ContractPlan")
             .AddClass("Contract", type => type.ImplementInterface<IPlanContract>(contract => contract
