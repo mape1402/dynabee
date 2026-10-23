@@ -317,6 +317,22 @@ namespace DynaBee.FluentApi
             return this;
         }
 
+        /// <summary>
+        /// Overrides a base method and surrounds its base invocation with interceptor bodies.
+        /// </summary>
+        /// <param name="baseMethod">Virtual or abstract base method to intercept.</param>
+        /// <param name="configure">Interceptor configuration.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder Intercept(MethodInfo baseMethod, Action<BeeMethodInterceptionBuilder> configure)
+        {
+            if (baseMethod == null)
+                throw new ArgumentNullException(nameof(baseMethod));
+
+            var interception = new BeeMethodInterceptionBuilder(baseMethod);
+            configure?.Invoke(interception);
+            return OverrideMethod(baseMethod, method => method.EmitsBody(interception.Emit));
+        }
+
         internal BeeClassBuilder AddInterfaceMethod(MethodInfo interfaceMethod, Action<BeeMethodBuilder> configure)
         {
             var methodBuilder = new BeeMethodBuilder(interfaceMethod.Name, interfaceMethod.ReturnType)

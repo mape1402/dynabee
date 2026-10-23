@@ -12,6 +12,8 @@ namespace DynaBee.FluentApi.Body
         private readonly Type _selfType;
         private readonly TypeContextBuilder _typeContextBuilder;
         private readonly Dictionary<string, BeeParameterExpression> _parameters;
+        private readonly BeeParameterExpression[] _orderedParameters;
+        private readonly MethodInfo _baseMethod;
         private readonly Dictionary<string, BeeLocalExpression> _locals = new(StringComparer.Ordinal);
         private readonly Stack<BeeLoopScope> _loops = new();
         private int _protectedRegionDepth;
@@ -25,16 +27,18 @@ namespace DynaBee.FluentApi.Body
             Type returnType,
             IReadOnlyList<(string Name, Type Type, int ArgumentIndex)> parameters,
             Type selfType = null,
-            TypeContextBuilder typeContextBuilder = null)
+            TypeContextBuilder typeContextBuilder = null,
+            MethodInfo baseMethod = null)
         {
             _il = il ?? throw new ArgumentNullException(nameof(il));
             _returnType = returnType ?? throw new ArgumentNullException(nameof(returnType));
             _selfType = selfType;
             _typeContextBuilder = typeContextBuilder;
-            _parameters = parameters.ToDictionary(
-                x => x.Name,
-                x => new BeeParameterExpression(x.Name, x.Type, x.ArgumentIndex),
-                StringComparer.Ordinal);
+            _orderedParameters = parameters
+                .Select(x => new BeeParameterExpression(x.Name, x.Type, x.ArgumentIndex))
+                .ToArray();
+            _parameters = _orderedParameters.ToDictionary(x => x.Name, StringComparer.Ordinal);
+            _baseMethod = baseMethod;
         }
 
         public bool HasReturn { get; private set; }
@@ -353,6 +357,24 @@ namespace DynaBee.FluentApi.Body
             var expression = RequireExpression(instance);
             var method = ResolveInstanceMethod(expression, methodName, parameterTypes);
             return CreateCallExpression(expression, method, isStaticCall: false, arguments);
+        }
+
+        public IBeeValueExpression CallBase()
+            => CallBase(_orderedParameters.Cast<IBeeValueExpression>().ToArray());
+
+        public IBeeValueExpression CallBase(params IBeeValueExpression[] arguments)
+        {
+            if (_baseMethod == null)
+                throw new InvalidOperationException("CallBase is only available while implementing an override.");
+
+            if (_baseMethod.IsAbstract)
+                throw new InvalidOperationException($"Base method '{_baseMethod}' is abstract and cannot be called.");
+
+            var argumentExpressions = (arguments ?? Array.Empty<IBeeValueExpression>())
+                .Select(RequireExpression)
+                .ToArray();
+            ValidateCallArguments(_baseMethod, argumentExpressions);
+            return new BeeBaseMethodCallExpression(RequireExpression(Self()), _baseMethod, argumentExpressions);
         }
 
         public IBeeValueExpression StaticCall(MethodInfo method, params IBeeValueExpression[] arguments)
@@ -1656,6 +1678,32 @@ namespace DynaBee.FluentApi.Body
 
         private static bool ShouldCallVirtual(MethodInfo method)
             => !method.IsStatic && method.IsVirtual && !method.IsFinal && !method.DeclaringType!.IsValueType;
+    }
+
+    internal sealed class BeeBaseMethodCallExpression : BeeValueExpression
+    {
+        private readonly BeeValueExpression _instance;
+        private readonly MethodInfo _method;
+        private readonly BeeValueExpression[] _arguments;
+
+        public BeeBaseMethodCallExpression(BeeValueExpression instance, MethodInfo method, BeeValueExpression[] arguments)
+            : base(method.ReturnType)
+        {
+            _instance = instance;
+            _method = method;
+            _arguments = arguments;
+        }
+
+        public override void EmitLoad(ILGenerator il)
+        {
+            _instance.EmitLoad(il);
+            var parameters = _method.GetParameters();
+            for (var i = 0; i < _arguments.Length; i++)
+                BeeMethodBodyBuilder.EmitLoadWithConversion(il, _arguments[i], parameters[i].ParameterType);
+
+            // Call skips virtual dispatch so the generated override does not recursively invoke itself.
+            il.Emit(OpCodes.Call, _method);
+        }
     }
 
     internal enum BeeOrderedComparisonKind
