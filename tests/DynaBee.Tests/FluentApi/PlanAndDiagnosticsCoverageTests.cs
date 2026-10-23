@@ -259,12 +259,17 @@ public sealed class PlanAndDiagnosticsCoverageTests
         var dynamicAssembly = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(
             new AssemblyName($"DynaBee.Tests.UnknownAccess.{Guid.NewGuid():N}"),
             System.Reflection.Emit.AssemblyBuilderAccess.Run);
-        var field = dynamicAssembly.DefineDynamicModule("Unknown").DefineType("Unknown", TypeAttributes.Public)
+        var module = dynamicAssembly.DefineDynamicModule("Unknown");
+        var field = module.DefineType("Unknown", TypeAttributes.Public)
             .DefineField("Value", typeof(int), FieldAttributes.Static);
+        var compilerControlledMethod = module.DefineType("UnknownMethod", TypeAttributes.Public)
+            .DefineMethod("Generated", MethodAttributes.PrivateScope | MethodAttributes.Static, typeof(void), Type.EmptyTypes);
+        compilerControlledMethod.GetILGenerator().Emit(System.Reflection.Emit.OpCodes.Ret);
 
         Assert.Equal("Public", InvokeDiagnosticHelper("GetTypeAccess", typeof(List<>).GetGenericArguments()[0]));
         Assert.Equal("Public", InvokeDiagnosticHelper("GetMethodAccess", dynamicMethod));
         Assert.Equal("Unknown", InvokeDiagnosticHelper("GetFieldAccess", field));
+        Assert.Equal("Unknown", InvokeDiagnosticHelper("GetMethodAccess", compilerControlledMethod));
     }
 
     [Fact]
