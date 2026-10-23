@@ -112,6 +112,9 @@ public sealed class CoreUtilityCoverageTests
         Assert.Throws<ArgumentNullException>(() => new BeeConstructorBuilder().CallsBase(
             (System.Reflection.ConstructorInfo)null!,
             (Action<BeeConstructorBaseCallBuilder>)null!));
+        Assert.Throws<ArgumentNullException>(() => new BeeConstructorBuilder().CallsBase(
+            (System.Reflection.ConstructorInfo)null!,
+            Array.Empty<string>()));
 
         new BeeAssemblyBuilder($"DynaBee.Tests.Contract.{Guid.NewGuid():N}")
             .AddClass("Generated", type => Assert.Throws<ArgumentNullException>(() =>
