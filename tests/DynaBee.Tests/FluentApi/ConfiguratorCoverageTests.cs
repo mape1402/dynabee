@@ -547,6 +547,9 @@ public sealed class ConfiguratorCoverageTests
         Expression<Func<string, string, string>> concat = (left, right) => left + right;
         Expression<Func<ExpressionProbe, int>> virtualCall = value => value.VirtualValue();
         Expression<Func<ExpressionProbe, int>> property = value => value.Value;
+        Expression<Func<ExpressionProbe, int>> field = value => value.Field;
+        Expression<Func<int>> staticField = () => ExpressionStatics.Field;
+        Expression<Func<int>> staticProperty = () => ExpressionStatics.Property;
         Expression<Func<int, int>> constructed = value => new ExpressionBox(value).Value;
         Expression<Func<int, long>> widen = value => (long)value;
         Expression<Func<object, int>> unbox = value => (int)value;
@@ -558,6 +561,9 @@ public sealed class ConfiguratorCoverageTests
                 .AddMethod("Concat", typeof(string), method => method.WithParameter<string>("left").WithParameter<string>("right").EmitsExpression(concat))
                 .AddMethod("Virtual", typeof(int), method => method.WithParameter<ExpressionProbe>("value").EmitsExpression(virtualCall))
                 .AddMethod("Property", typeof(int), method => method.WithParameter<ExpressionProbe>("value").EmitsExpression(property))
+                .AddMethod("Field", typeof(int), method => method.WithParameter<ExpressionProbe>("value").EmitsExpression(field))
+                .AddMethod("StaticField", typeof(int), method => method.EmitsExpression(staticField))
+                .AddMethod("StaticProperty", typeof(int), method => method.EmitsExpression(staticProperty))
                 .AddMethod("Constructed", typeof(int), method => method.WithParameter<int>("value").EmitsExpression(constructed))
                 .AddMethod("Widen", typeof(long), method => method.WithParameter<int>("value").EmitsExpression(widen))
                 .AddMethod("Unbox", typeof(int), method => method.WithParameter<object>("value").EmitsExpression(unbox)))
@@ -571,6 +577,9 @@ public sealed class ConfiguratorCoverageTests
         Assert.Equal("ab", type.GetMethod("Concat")!.Invoke(instance, new object[] { "a", "b" }));
         Assert.Equal(9, type.GetMethod("Virtual")!.Invoke(instance, new object[] { new ExpressionProbe(4) }));
         Assert.Equal(4, type.GetMethod("Property")!.Invoke(instance, new object[] { new ExpressionProbe(4) }));
+        Assert.Equal(10, type.GetMethod("Field")!.Invoke(instance, new object[] { new ExpressionProbe(4) { Field = 10 } }));
+        Assert.Equal(11, type.GetMethod("StaticField")!.Invoke(instance, null));
+        Assert.Equal(12, type.GetMethod("StaticProperty")!.Invoke(instance, null));
         Assert.Equal(5, type.GetMethod("Constructed")!.Invoke(instance, new object[] { 5 }));
         Assert.Equal(6L, type.GetMethod("Widen")!.Invoke(instance, new object[] { 6 }));
         Assert.Equal(7, type.GetMethod("Unbox")!.Invoke(instance, new object[] { 7 }));
@@ -764,7 +773,16 @@ public sealed class ConfiguratorCoverageTests
 
         public virtual int Value { get; }
 
+        public int Field;
+
         public virtual int VirtualValue() => Value + 5;
+    }
+
+    public static class ExpressionStatics
+    {
+        public static int Field = 11;
+
+        public static int Property => 12;
     }
 
     public sealed class ExpressionBox
