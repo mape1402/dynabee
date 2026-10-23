@@ -2,6 +2,7 @@ namespace DynaBee.Tests.FluentApi;
 
 using DynaBee;
 using DynaBee.FluentApi;
+using DynaBee.Infrastructure;
 
 public sealed class CoreUtilityCoverageTests
 {
@@ -35,6 +36,7 @@ public sealed class CoreUtilityCoverageTests
 
         Assert.NotNull(attribute.Build());
         Assert.NotNull(builder.Build());
+        Assert.Throws<InvalidOperationException>(() => BeeAttribute.Of<UtilityAttribute>((object[])null!).Build());
         Assert.Throws<ArgumentNullException>(() => BeeAttribute.Of(null!));
         Assert.Throws<ArgumentException>(() => BeeAttribute.Of(typeof(string)));
         Assert.Throws<ArgumentException>(() => attribute.WithProperty("", true));
@@ -66,6 +68,17 @@ public sealed class CoreUtilityCoverageTests
         Assert.Equal(string.Empty, RecordSemanticsHelper.ToRecordString(null!, Array.Empty<string>()));
         Assert.Equal("UtilityModel { Value = 3 }", RecordSemanticsHelper.ToRecordString(first, new[] { nameof(UtilityModel.Value) }));
         Assert.Throws<InvalidOperationException>(() => RecordSemanticsHelper.ToRecordString(first, new[] { "Missing" }));
+    }
+
+    [Fact]
+    public void Core_Type_And_Access_Value_Objects_Reject_Invalid_Inputs_And_Compare_Objects()
+    {
+        Type nullType = null!;
+
+        Assert.Throws<ArgumentNullException>(() => { BeeType ignored = nullType; });
+        Assert.False(ClassAccessModifier.Public.Equals("public"));
+        Assert.False(FieldAccessModifier.Public.Equals("public"));
+        Assert.False(MethodAccessModifier.Public.Equals("public"));
     }
 
     public sealed class UtilityModel
