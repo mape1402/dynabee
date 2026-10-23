@@ -34,6 +34,9 @@ public sealed class FluentSurfaceAndContextCoverageTests
                     .Before(body => body.Evaluate(body.StaticCall(typeof(VoidInterceptorRecorder), nameof(VoidInterceptorRecorder.Before), Type.EmptyTypes)))
                     .After(body => body.Evaluate(body.StaticCall(typeof(VoidInterceptorRecorder), nameof(VoidInterceptorRecorder.After), Type.EmptyTypes)))
                     .Finally(body => body.Evaluate(body.StaticCall(typeof(VoidInterceptorRecorder), nameof(VoidInterceptorRecorder.Finally), Type.EmptyTypes)))))
+            .AddClass("BareIntercepted", type => type
+                .Inherits<VoidBase>()
+                .Intercept(voidMethod, configure: null))
             .Build();
 
         var surfaceType = context.GetClrType("Surface");
@@ -53,6 +56,10 @@ public sealed class FluentSurfaceAndContextCoverageTests
         var intercepted = (VoidBase)context.CreateInstance("Intercepted");
         intercepted.Execute();
         Assert.Equal(new[] { "before", "base", "after", "finally" }, VoidInterceptorRecorder.Events);
+
+        VoidInterceptorRecorder.Reset();
+        ((VoidBase)context.CreateInstance("BareIntercepted")).Execute();
+        Assert.Equal(new[] { "base" }, VoidInterceptorRecorder.Events);
     }
 
     [Fact]
