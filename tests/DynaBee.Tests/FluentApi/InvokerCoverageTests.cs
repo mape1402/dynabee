@@ -162,6 +162,27 @@ public sealed class InvokerCoverageTests
         Assert.Equal("<null>, System.Int32", AssemblyContextInvokerExtensions.FormatTypes(new Type[] { null!, typeof(int) }));
     }
 
+    [Fact]
+    public void Invocation_Adapters_Validate_Nullable_List_And_Internal_Failure_Shapes()
+    {
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeObjectMethodAdapter("Assembly", "Type", "Method", null!, typeof(void), _ => null!));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeObjectMethodAdapter("Assembly", "Type", "Method", Type.EmptyTypes, null!, _ => null!));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeObjectMethodAdapter("Assembly", "Type", "Method", Type.EmptyTypes, typeof(void), null!));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeBoundMethodInvoker("Type", "Method", null!, new object()));
+        Assert.Throws<ArgumentNullException>(() => new GeneratedMethodResolution(null!, typeof(object).GetMethod(nameof(object.ToString))!));
+        Assert.Throws<ArgumentNullException>(() => new GeneratedMethodResolution(CreateContext().Find("Dispatch"), null!));
+
+        var nullableFailure = new DynaBeeObjectMethodAdapter(
+            "Assembly", "Type", "Nullable", new[] { typeof(int?) }, typeof(void),
+            _ => throw new NullReferenceException("failure"));
+        var referenceFailure = new DynaBeeObjectMethodAdapter(
+            "Assembly", "Type", "Reference", new[] { typeof(string) }, typeof(void),
+            _ => throw new NullReferenceException("failure"));
+
+        Assert.Contains("adapter invocation failed", Assert.Throws<InvalidOperationException>(() => nullableFailure.Invoke(new List<object> { 3 })).Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("adapter invocation failed", Assert.Throws<InvalidOperationException>(() => referenceFailure.Invoke(new List<object> { "value" })).Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static IAssemblyContext CreateContext()
     {
         DispatchRecorder.LastValue = null;
