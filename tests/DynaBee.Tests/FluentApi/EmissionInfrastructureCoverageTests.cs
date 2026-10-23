@@ -108,6 +108,25 @@ public sealed class EmissionInfrastructureCoverageTests
     }
 
     [Fact]
+    public void ExpressionEmitter_Supports_Void_Bodies_Discarded_Values_And_All_Runtime_Conversions()
+    {
+        ExpressionRuntime.StaticValue = 0;
+
+        CompileVoid((Expression<Action>)(() => ExpressionRuntime.Record()))();
+        CompileAsVoid((Expression<Func<int>>)(() => 42))();
+
+        Assert.Equal(1, ExpressionRuntime.StaticValue);
+        Assert.Equal(7, Compile((Expression<Func<long, int>>)(value => (int)value))(7L));
+        Assert.Equal(7f, Compile((Expression<Func<int, float>>)(value => (float)value))(7));
+        Assert.Equal(7d, Compile((Expression<Func<int, double>>)(value => (double)value))(7));
+        Assert.Equal((short)7, Compile((Expression<Func<int, short>>)(value => (short)value))(7));
+        Assert.Equal((byte)7, Compile((Expression<Func<int, byte>>)(value => (byte)value))(7));
+        Assert.Equal("value", Compile((Expression<Func<object, string>>)(value => (string)value))("value"));
+        Assert.Equal("value", Compile((Expression<Func<string, object>>)(value => (object)value))("value"));
+        Assert.False(Compile((Expression<Func<bool>>)(() => false))());
+    }
+
+    [Fact]
     public void ExpressionEmitter_Reports_Invalid_Signatures_And_Unsupported_Expressions()
     {
         var method = new DynamicMethod("InvalidExpression", typeof(int), new[] { typeof(int) });
@@ -119,6 +138,11 @@ public sealed class EmissionInfrastructureCoverageTests
         Assert.Throws<InvalidOperationException>(() => ExpressionIlEmitter.Emit(valid, il, Type.EmptyTypes, typeof(int), true));
         Assert.Throws<InvalidOperationException>(() => ExpressionIlEmitter.Emit(valid, il, new[] { typeof(int), typeof(int) }, typeof(int), false));
         Assert.Throws<InvalidOperationException>(() => ExpressionIlEmitter.Emit(valid, il, new[] { typeof(int) }, typeof(string), true));
+        var unbound = Expression.Parameter(typeof(int), "unbound");
+        Assert.Throws<InvalidOperationException>(() => Compile(Expression.Lambda<Func<int>>(unbound)));
+        var left = Expression.Parameter(typeof(bool), "left");
+        var right = Expression.Parameter(typeof(bool), "right");
+        Assert.Throws<NotSupportedException>(() => Compile(Expression.Lambda<Func<bool, bool, bool>>(Expression.And(left, right), left, right)));
         Assert.Throws<NotSupportedException>(() => Compile((Expression<Func<int, int>>)(value => -value)));
         Assert.Throws<NotSupportedException>(() => Compile((Expression<Func<decimal>>)(() => 1m)));
         Assert.Throws<NotSupportedException>(() => Compile((Expression<Func<char, decimal>>)(value => (decimal)value)));
@@ -154,6 +178,20 @@ public sealed class EmissionInfrastructureCoverageTests
         return (Func<SelfRuntime, int, int>)method.CreateDelegate(typeof(Func<SelfRuntime, int, int>));
     }
 
+    private static Action CompileVoid(Expression<Action> expression)
+    {
+        var method = new DynamicMethod("ExpressionVoid", typeof(void), Type.EmptyTypes);
+        ExpressionIlEmitter.Emit(expression, method.GetILGenerator(), Type.EmptyTypes, typeof(void), true);
+        return (Action)method.CreateDelegate(typeof(Action));
+    }
+
+    private static Action CompileAsVoid(Expression<Func<int>> expression)
+    {
+        var method = new DynamicMethod("ExpressionDiscard", typeof(void), Type.EmptyTypes);
+        ExpressionIlEmitter.Emit(expression, method.GetILGenerator(), Type.EmptyTypes, typeof(void), true);
+        return (Action)method.CreateDelegate(typeof(Action));
+    }
+
     private enum SampleState
     {
         Unknown,
@@ -172,10 +210,14 @@ public sealed class EmissionInfrastructureCoverageTests
         public int Field;
 
         public int Property { get; set; }
+
+        public static void Record()
+            => StaticValue++;
     }
 
     public sealed class SelfRuntime
     {
         public int Offset { get; set; }
     }
+
 }
