@@ -183,6 +183,28 @@ public sealed class InvokerCoverageTests
         Assert.Contains("adapter invocation failed", Assert.Throws<InvalidOperationException>(() => referenceFailure.Invoke(new List<object> { "value" })).Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Invocation_Delegates_Support_Exact_Runtime_Factories_And_Void_Open_Methods()
+    {
+        var context = CreateContext();
+        var dispatch = context.GetClrType("Dispatch");
+        var factoryType = context.GetClrType("Factory");
+        var instance = context.CreateInstance("Dispatch");
+        var exactFactoryDelegateType = typeof(Func<>).MakeGenericType(factoryType);
+
+        var exactFactory = (Delegate)context.CreateFactoryDelegate(exactFactoryDelegateType, "Factory", Type.EmptyTypes);
+        var voidOpen = context.CreateOpenDelegate<Action<object, string>>(
+            "Dispatch", "Void", new[] { typeof(string) });
+        var convertedOpen = context.CreateOpenDelegate<Func<object, string, object>>(
+            "Dispatch", "Echo", new[] { typeof(string) });
+
+        Assert.Equal(factoryType, exactFactory.DynamicInvoke()!.GetType());
+        voidOpen(instance, "open-void");
+        Assert.Equal("open-void", DispatchRecorder.LastValue);
+        Assert.Equal("converted", convertedOpen(instance, "converted"));
+        Assert.True(dispatch.IsInstanceOfType(instance));
+    }
+
     private static IAssemblyContext CreateContext()
     {
         DispatchRecorder.LastValue = null;
