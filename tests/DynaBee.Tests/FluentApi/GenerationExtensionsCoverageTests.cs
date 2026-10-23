@@ -8,6 +8,22 @@ using Microsoft.Extensions.DependencyInjection;
 public sealed class GenerationExtensionsCoverageTests
 {
     [Fact]
+    public void Metadata_Schemas_Distinguish_Missing_Null_Typed_And_Invalid_Values()
+    {
+        var key = new BeeMetadataKey<int>("priority");
+        var schema = new DynaBeeMetadataSchema<int>(key, value => value > 0);
+        var validation = new DynaBeeExtensionValidationContext();
+
+        schema.Validate(new Dictionary<string, object>(), null, validation);
+        schema.Validate(new Dictionary<string, object> { [key.Name] = null! }, "NullType", validation);
+        schema.Validate(new Dictionary<string, object> { [key.Name] = 0 }, "InvalidType", validation);
+        schema.Validate(new Dictionary<string, object> { [key.Name] = 1 }, "ValidType", validation);
+
+        Assert.Equal(2, validation.Diagnostics.Count);
+        Assert.Contains(validation.Diagnostics, diagnostic => diagnostic.Code == "DBX001" && diagnostic.TypeName == "NullType");
+        Assert.Contains(validation.Diagnostics, diagnostic => diagnostic.Code == "DBX002" && diagnostic.TypeName == "InvalidType");
+    }
+    [Fact]
     public void GenerationServices_Register_Extensions_Schemas_And_Execute_Callbacks()
     {
         RecordingExtension.Reset();
