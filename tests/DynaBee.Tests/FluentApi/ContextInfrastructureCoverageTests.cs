@@ -31,6 +31,7 @@ public sealed class ContextInfrastructureCoverageTests
         Assert.Equal(5, typeRank);
         Assert.False(type.TryGetMetadata(new BeeMetadataKey<int>("missing"), out _));
         Assert.False(type.TryGetMetadata(default(BeeMetadataKey<int>), out _));
+        Assert.False(type.TryGetMetadata(new BeeMetadataKey<string>(key.Name), out _));
         Assert.Throws<KeyNotFoundException>(() => type.FindOne("missing"));
 
         Assert.Equal(6, assembly.GetMetadata(key.Name));
@@ -39,6 +40,7 @@ public sealed class ContextInfrastructureCoverageTests
         Assert.Equal(6, assemblyRank);
         Assert.False(assembly.TryGetMetadata(new BeeMetadataKey<int>("missing"), out _));
         Assert.False(assembly.TryGetMetadata(default(BeeMetadataKey<int>), out _));
+        Assert.False(assembly.TryGetMetadata(new BeeMetadataKey<string>(key.Name), out _));
         Assert.Throws<KeyNotFoundException>(() => assembly.Find("missing"));
         Assert.Throws<KeyNotFoundException>(() => assembly.GetMetadata("missing"));
 

@@ -63,6 +63,20 @@
                 string result = immutable;
                 Assert.Equal("test", result);
             }
+
+            [Fact]
+            public void BaseArguments_Rejects_Invalid_Registered_Values()
+            {
+                Assert.Throws<ArgumentException>(() => new InvalidArguments().ValidateAndThrow());
+            }
+
+            private sealed class InvalidArguments : BaseArguments
+            {
+                public InvalidArguments()
+                {
+                    Arguments.Add("invalid", new Immutable<int>());
+                }
+            }
         }
     }
 
