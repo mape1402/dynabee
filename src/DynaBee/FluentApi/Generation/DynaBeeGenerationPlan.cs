@@ -2,6 +2,8 @@ namespace DynaBee.FluentApi.Generation
 {
     using DynaBee.Infrastructure;
     using System.Reflection;
+    using System.Security.Cryptography;
+    using System.Text;
 
     /// <summary>
     /// Describes dynamic types before they are emitted into an assembly builder.
@@ -129,6 +131,33 @@ namespace DynaBee.FluentApi.Generation
             return new DynaBeePlanValidationResult(diagnostics);
         }
 
+        /// <summary>
+        /// Creates a stable SHA-256 fingerprint for the declarative assembly and type shape in this plan.
+        /// Add a metadata value when distinct method-body closures share the same declared shape and need separate cache entries.
+        /// </summary>
+        /// <returns>A lowercase hexadecimal SHA-256 fingerprint.</returns>
+        public string GetFingerprint()
+        {
+            var builder = new StringBuilder(AssemblyName);
+            foreach (var metadata in _metadata.OrderBy(x => x.Key, StringComparer.Ordinal))
+                Append(builder, "assembly-metadata", metadata.Key, FormatValue(metadata.Value));
+
+            foreach (var classPlan in _classes.OrderBy(x => x.Name, StringComparer.Ordinal))
+            {
+                Append(builder, "class", classPlan.Name, classPlan.BaseType?.AssemblyQualifiedName ?? string.Empty);
+                foreach (var interfaceType in classPlan.Interfaces.OrderBy(x => x?.AssemblyQualifiedName, StringComparer.Ordinal))
+                    Append(builder, "interface", interfaceType?.AssemblyQualifiedName ?? string.Empty);
+                foreach (var serviceType in classPlan.ServiceTypes.OrderBy(x => x?.AssemblyQualifiedName, StringComparer.Ordinal))
+                    Append(builder, "service", serviceType?.AssemblyQualifiedName ?? string.Empty);
+                foreach (var metadata in classPlan.Metadata.OrderBy(x => x.Key, StringComparer.Ordinal))
+                    Append(builder, "class-metadata", metadata.Key, FormatValue(metadata.Value));
+                foreach (var member in classPlan.Members.OrderBy(x => x.ElementType).ThenBy(x => x.Name, StringComparer.Ordinal))
+                    Append(builder, "member", member.ElementType.ToString(), member.Name, member.ValueType?.AssemblyQualifiedName ?? string.Empty);
+            }
+
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()))).ToLowerInvariant();
+        }
+
         private static void ValidateClass(DynaBeeGeneratedClassPlan classPlan, ICollection<DynaBeePlanDiagnostic> diagnostics)
         {
             if (classPlan.BaseType != null)
@@ -204,6 +233,19 @@ namespace DynaBee.FluentApi.Generation
                     classPlan.Name));
             }
         }
+
+        private static void Append(StringBuilder builder, params string[] values)
+        {
+            foreach (var value in values)
+            {
+                builder.Append(value?.Length ?? 0).Append(':').Append(value).Append('|');
+            }
+        }
+
+        private static string FormatValue(object value)
+            => value == null
+                ? "<null>"
+                : $"{value.GetType().AssemblyQualifiedName}:{Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)}";
     }
 
     /// <summary>

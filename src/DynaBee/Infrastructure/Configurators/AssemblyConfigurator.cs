@@ -12,6 +12,7 @@
         private readonly List<ITypeConfigurator> _typeBuilders = new();
         private readonly Dictionary<string, object> _metadata = new();
         private readonly string _name;
+        private bool _collectible;
 
         public AssemblyConfigurator(string name)
         {
@@ -39,13 +40,18 @@
             return this;
         }
 
+        internal void MakeCollectible()
+            => _collectible = true;
+
         /// <summary>
         /// <inheritdoc/>
         /// </summary>
         public IAssemblyContextBuilder Configure()
         {
             var assemblyName = new AssemblyName(_name);
-            var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
+            var assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(
+                assemblyName,
+                _collectible ? AssemblyBuilderAccess.RunAndCollect : AssemblyBuilderAccess.Run);
 
             var moduleBuilder = assemblyBuilder.DefineDynamicModule("MainModule");
 

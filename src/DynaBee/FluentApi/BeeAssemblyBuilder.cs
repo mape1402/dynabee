@@ -104,6 +104,18 @@ namespace DynaBee.FluentApi
         }
 
         /// <summary>
+        /// Generates the assembly as collectible and disables the process-wide builder cache.
+        /// Release all type, instance, delegate, and context references before expecting the runtime to unload it.
+        /// </summary>
+        /// <returns>The same assembly builder.</returns>
+        public BeeAssemblyBuilder AsCollectible()
+        {
+            _cacheEnabled = false;
+            _assemblyConfigurator.MakeCollectible();
+            return this;
+        }
+
+        /// <summary>
         /// Adds a generic dynamic class.
         /// </summary>
         /// <param name="name">Class name.</param>
@@ -245,5 +257,12 @@ namespace DynaBee.FluentApi
             var key = $"{_assemblyName}::{_version}";
             return Cache.GetOrAdd(key, _ => _assemblyConfigurator.Configure().Build());
         }
+
+        /// <summary>
+        /// Builds this assembly and returns a lease that can release DynaBee's context reference.
+        /// </summary>
+        /// <returns>A context lease.</returns>
+        public IAssemblyContextLease BuildLease()
+            => new AssemblyContextLease(Build());
     }
 }
