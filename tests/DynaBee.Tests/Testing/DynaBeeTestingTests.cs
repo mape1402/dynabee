@@ -1,6 +1,7 @@
 namespace DynaBee.Tests.Testing;
 
 using DynaBee.FluentApi;
+using DynaBee.FluentApi.Generation;
 using DynaBee.Testing;
 using DynaBee.Testing.Assertions;
 using DynaBee.Testing.DependencyInjection;
@@ -124,6 +125,31 @@ public sealed class DynaBeeTestingTests
         Assert.True(File.Exists(snapshot));
         Assert.Contains("GeneratedGreeter", File.ReadAllText(snapshot));
         Directory.Delete(outputPath, recursive: true);
+    }
+
+    [Fact]
+    public async Task FromPlan_Exposes_Exported_Source_And_Richer_Type_Assertions()
+    {
+        var plan = new DynaBeeGenerationPlan("DynaBee.Testing.Tests.PlanSnapshots")
+            .AddClass("GeneratedGreeter", type => type
+                .AddProperty("Name", typeof(string))
+                .AddMethod("Greet", typeof(string), method => method
+                    .WithParameter<string>("name")
+                    .EmitsExpression((Expression<Func<string, string>>)(name => "Hello " + name))));
+        var dynabeeTest = new ServiceCollection()
+            .AddDynaBeeTesting()
+            .BuildServiceProvider()
+            .GetRequiredService<IDynaBeeTestGenerator>();
+
+        var result = await dynabeeTest.GenerateAssemblyAsync(DynaBeeTestSpecification.FromPlan(plan));
+        var generatedType = result.Assembly.ShouldContainType("GeneratedGreeter");
+
+        result.Diagnostics.ShouldHaveNoErrors();
+        result.Diagnostics.ShouldHaveNoWarnings();
+        generatedType.ShouldHaveProperty("Name", typeof(string));
+        generatedType.ShouldHaveMethod("Greet", typeof(string));
+        Assert.True(result.GeneratedSources.ContainsKey("DynaBee.Plan.g.cs"));
+        result.ShouldMatchSource("DynaBee.Plan.g.cs", plan.ExportSource().Source);
     }
 
     public interface IRequestHandler<in TRequest, out TResponse>
