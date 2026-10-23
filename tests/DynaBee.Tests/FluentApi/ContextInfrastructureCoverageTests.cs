@@ -21,6 +21,7 @@ public sealed class ContextInfrastructureCoverageTests
         Assert.Equal(4, elementRank);
         Assert.False(element.TryGetMetadata(new BeeMetadataKey<int>("missing"), out _));
         Assert.False(element.TryGetMetadata(new BeeMetadataKey<string>(key.Name), out _));
+        Assert.False(element.TryGetMetadata(default(BeeMetadataKey<int>), out _));
         Assert.Throws<KeyNotFoundException>(() => element.GetMetadata("missing"));
 
         Assert.Equal(5, type.GetMetadata(key.Name));
@@ -29,6 +30,7 @@ public sealed class ContextInfrastructureCoverageTests
         Assert.True(type.TryGetMetadata(key, out int typeRank));
         Assert.Equal(5, typeRank);
         Assert.False(type.TryGetMetadata(new BeeMetadataKey<int>("missing"), out _));
+        Assert.False(type.TryGetMetadata(default(BeeMetadataKey<int>), out _));
         Assert.Throws<KeyNotFoundException>(() => type.FindOne("missing"));
 
         Assert.Equal(6, assembly.GetMetadata(key.Name));
@@ -36,6 +38,7 @@ public sealed class ContextInfrastructureCoverageTests
         Assert.True(assembly.TryGetMetadata(key, out int assemblyRank));
         Assert.Equal(6, assemblyRank);
         Assert.False(assembly.TryGetMetadata(new BeeMetadataKey<int>("missing"), out _));
+        Assert.False(assembly.TryGetMetadata(default(BeeMetadataKey<int>), out _));
         Assert.Throws<KeyNotFoundException>(() => assembly.Find("missing"));
         Assert.Throws<KeyNotFoundException>(() => assembly.GetMetadata("missing"));
 
@@ -123,6 +126,23 @@ public sealed class ContextInfrastructureCoverageTests
         Assert.False(assembly.TryGetMetadata(new BeeMetadataKey<string>("rank"), out _));
         Assert.Throws<InvalidOperationException>(() => type.FindOne("Same"));
         Assert.Single(assembly.Find(context => context.Name == "Type"));
+    }
+
+    [Fact]
+    public void Context_Builder_Constructors_Reject_Invalid_Dependencies_And_Dynamic_Accessors()
+    {
+        var dynamicAssembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName($"DynaBee.Tests.Contexts.Invalid.{Guid.NewGuid():N}"), AssemblyBuilderAccess.Run);
+        var module = dynamicAssembly.DefineDynamicModule("Contexts");
+        var validAssemblyBuilder = new AssemblyContextBuilder("Contexts", dynamicAssembly, module);
+        var typeBuilder = module.DefineType("Generated", TypeAttributes.Public);
+
+        Assert.Throws<ArgumentException>(() => new AssemblyContextBuilder(" ", dynamicAssembly, module));
+        Assert.Throws<ArgumentNullException>(() => new AssemblyContextBuilder("Contexts", null!, module));
+        Assert.Throws<ArgumentNullException>(() => new AssemblyContextBuilder("Contexts", dynamicAssembly, null!));
+        Assert.Throws<ArgumentNullException>(() => new TypeContextBuilder(" ", typeBuilder, validAssemblyBuilder));
+        Assert.Throws<ArgumentNullException>(() => new TypeContextBuilder("Generated", null!, validAssemblyBuilder));
+        Assert.Throws<ArgumentNullException>(() => new TypeContextBuilder("Generated", typeBuilder, null!));
+        Assert.Throws<ArgumentNullException>(() => new DynamicPropertyAccessor(null!, null!, null!));
     }
 
     public interface Contract
