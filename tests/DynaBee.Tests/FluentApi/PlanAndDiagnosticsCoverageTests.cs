@@ -230,16 +230,19 @@ public sealed class PlanAndDiagnosticsCoverageTests
     [Fact]
     public void Source_Export_Handles_Global_Types_Arrays_Generics_And_Current_Directory_Output()
     {
+        var genericParameter = typeof(List<>).GetGenericArguments()[0];
         var plan = new DynaBeeGenerationPlan("DynaBee.Tests.SourceShapes")
             .AddClass("SourceShapes", type => type
                 .AddProperty("Numbers", typeof(int[]))
                 .AddProperty("Lookup", typeof(Dictionary<string, List<decimal>>))
+                .AddProperty("GenericArgument", genericParameter)
                 .AddMethod("Use", typeof(void), method => method.WithParameter<Uri>("value")));
         var result = plan.ExportSource();
         var file = $"dynabee-source-{Guid.NewGuid():N}.cs";
 
         Assert.Contains("public int[] Numbers { get; set; }", result.Source);
         Assert.Contains("global::System.Collections.Generic.Dictionary<string, global::System.Collections.Generic.List<decimal>>", result.Source);
+        Assert.Contains("global::T GenericArgument", result.Source);
         Assert.Contains("public void Use(global::System.Uri arg0)", result.Source);
         Assert.Throws<ArgumentException>(() => result.WriteTo(" "));
         try

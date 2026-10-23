@@ -221,6 +221,28 @@ public sealed class DependencyInjectionCoverageTests
     }
 
     [Fact]
+    public void Di_Registration_Only_Registers_Concrete_Non_Generic_Generated_Classes()
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("ConcreteService", _ => { })
+            .AddInterface("IGeneratedContract", _ => { })
+            .AddStruct("GeneratedValue", _ => { })
+            .AddGenericClass("GenericService", generic => generic
+                .WithTypeParameter("T")
+                .AddProperty("Value", generic.TypeParameter("T")))
+            .Build();
+        var concreteType = context.GetClrType("ConcreteService");
+        var genericType = context.GetClrType("GenericService");
+        var services = new ServiceCollection().AddDynaBee(context);
+        var provider = services.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService(concreteType));
+        Assert.DoesNotContain(services, descriptor => descriptor.ServiceType == genericType);
+        Assert.DoesNotContain(services, descriptor => descriptor.ServiceType == context.GetClrType("IGeneratedContract"));
+        Assert.DoesNotContain(services, descriptor => descriptor.ServiceType == context.GetClrType("GeneratedValue"));
+    }
+
+    [Fact]
     public void Registry_And_Provider_Overloads_Register_Current_Snapshots_And_Rule_Service_Types()
     {
         var registry = new AssemblyContextRegistry(NewAssemblyName());
@@ -318,6 +340,12 @@ public sealed class DependencyInjectionCoverageTests
     }
 
     [Fact]
+    public void Profile_Discovery_Returns_An_Empty_Result_For_A_Null_Assembly_Collection()
+    {
+        Assert.Empty(DynaBeeProfileDiscoveryExtensions.DiscoverProfilesFromAssemblies(null!));
+    }
+
+    [Fact]
     public void Dependency_Infrastructure_Rejects_Invalid_Constructors_And_Keeps_Stable_Snapshots()
     {
         var registry = new AssemblyContextRegistry(NewAssemblyName());
@@ -325,6 +353,7 @@ public sealed class DependencyInjectionCoverageTests
         var provider = new AssemblyContextProvider(registry, snapshot);
 
         Assert.Throws<ArgumentNullException>(() => new AssemblyContextProvider(null!));
+        Assert.Throws<ArgumentNullException>(() => new AssemblyContextProvider(null!, snapshot));
         Assert.Throws<ArgumentNullException>(() => new AssemblyContextProvider(registry, null!));
         Assert.Throws<ArgumentException>(() => new AssemblyContextRegistry(" "));
         Assert.Throws<ArgumentNullException>(() => new AssemblyContextRegistry("Registry", null!));
