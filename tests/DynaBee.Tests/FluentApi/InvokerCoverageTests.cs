@@ -74,6 +74,7 @@ public sealed class InvokerCoverageTests
         var instance = context.CreateInstance("Dispatch");
 
         Assert.Throws<ArgumentNullException>(() => AssemblyContextInvokerExtensions.CreateMethodInvoker(null!, "Dispatch", "Echo", new[] { typeof(string) }));
+        Assert.Throws<ArgumentNullException>(() => AssemblyContextInvokerExtensions.CreateFactoryDelegate(null!, typeof(Func<object>), "Factory", Type.EmptyTypes));
         Assert.Throws<ArgumentException>(() => context.CreateMethodInvoker("", "Echo", new[] { typeof(string) }));
         Assert.Throws<ArgumentException>(() => context.CreateMethodInvoker("Dispatch", "", new[] { typeof(string) }));
         Assert.Throws<ArgumentNullException>(() => context.CreateMethodInvoker("Dispatch", "Echo", null!));
@@ -82,18 +83,24 @@ public sealed class InvokerCoverageTests
         Assert.Contains("No overload", Assert.Throws<InvalidOperationException>(() => context.CreateMethodInvoker("Dispatch", "Echo", Type.EmptyTypes)).Message);
         Assert.Contains("Target instance", Assert.Throws<InvalidOperationException>(() => context.CreateBoundMethodInvoker("Dispatch", new object(), "Echo", new[] { typeof(string) })).Message);
         Assert.Throws<ArgumentNullException>(() => context.CreateBoundMethodInvoker("Dispatch", null!, "Echo", new[] { typeof(string) }));
+        Assert.Throws<ArgumentNullException>(() => context.CreateObjectAdapter("Dispatch", instance, "Echo", null!));
+        Assert.Throws<ArgumentNullException>(() => AssemblyContextInvokerExtensions.CreateObjectAdapter(null!, "Dispatch", instance, "Echo", new[] { typeof(string) }));
         Assert.Contains("exactly one", Assert.Throws<InvalidOperationException>(() => context.CreateObjectAdapter("Dispatch", instance, "Add", new[] { typeof(int), typeof(int) })).Message);
         Assert.Contains("exactly 2", Assert.Throws<InvalidOperationException>(() => context.CreateObjectAdapter2("Dispatch", instance, "Echo", new[] { typeof(string) })).Message);
         Assert.Contains("exactly 3", Assert.Throws<InvalidOperationException>(() => context.CreateObjectAdapter3("Dispatch", instance, "Add", new[] { typeof(int), typeof(int) })).Message);
         Assert.Contains("not a delegate", Assert.Throws<InvalidOperationException>(() => context.CreateBoundDelegate(typeof(string), "Dispatch", instance, "Echo", new[] { typeof(string) })).Message);
+        Assert.Throws<ArgumentNullException>(() => context.CreateBoundDelegate(null!, "Dispatch", instance, "Echo", new[] { typeof(string) }));
         Assert.Contains("parameters do not match", Assert.Throws<InvalidOperationException>(() => context.CreateBoundDelegate<Func<int, string>>("Dispatch", instance, "Echo", new[] { typeof(string) })).Message);
         Assert.Contains("not assignable", Assert.Throws<InvalidOperationException>(() => context.CreateBoundDelegate<Func<string, int>>("Dispatch", instance, "Echo", new[] { typeof(string) })).Message);
+        Assert.Contains("method returns void", Assert.Throws<InvalidOperationException>(() => context.CreateBoundDelegate<Func<string, int>>("Dispatch", instance, "Void", new[] { typeof(string) })).Message);
         Assert.Contains("must declare one target", Assert.Throws<InvalidOperationException>(() => context.CreateOpenDelegate<Func<string, string>>("Dispatch", "Echo", new[] { typeof(string) })).Message);
         Assert.Contains("not compatible", Assert.Throws<InvalidOperationException>(() => context.CreateOpenDelegate<Func<IDisposable, string, string>>("Dispatch", "Echo", new[] { typeof(string) })).Message);
+        Assert.Contains("not assignable", Assert.Throws<InvalidOperationException>(() => context.CreateOpenDelegate<Func<object, string, int>>("Dispatch", "Void", new[] { typeof(string) })).Message);
         Assert.Contains("No constructor", Assert.Throws<InvalidOperationException>(() => context.CreateFactoryDelegate<Func<object, object>>("Factory", new[] { typeof(object) })).Message);
         Assert.Contains("not assignable", Assert.Throws<InvalidOperationException>(() => context.CreateFactoryDelegate<Func<string>>("Factory", Type.EmptyTypes)).Message);
         Assert.Throws<ArgumentNullException>(() => context.CreateFactoryDelegate(typeof(Func<object>), "Factory", null!));
         Assert.Contains("was not found", Assert.Throws<InvalidOperationException>(() => context.GetGeneratedMethodDescriptors(null!)).Message);
+        Assert.Throws<ArgumentNullException>(() => AssemblyContextInvokerExtensions.GetGeneratedMethodDescriptors(null!, "Dispatch"));
     }
 
     [Fact]

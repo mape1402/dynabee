@@ -240,6 +240,43 @@ public sealed class BodyAndExpressionCoverageTests
     }
 
     [Fact]
+    public void MethodBodyBuilder_Executes_Numeric_Promotions_And_Nullable_Coalesce_Fallbacks()
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Numeric", type => type
+                .AddMethod("Double", typeof(bool), method => method
+                    .WithParameter<double>("left")
+                    .WithParameter<int>("right")
+                    .EmitsBody(body => body.Return(body.GreaterThan(body.Parameter<double>("left"), body.Parameter<int>("right")))))
+                .AddMethod("Float", typeof(float), method => method
+                    .WithParameter<float>("left")
+                    .WithParameter<int>("right")
+                    .EmitsBody(body => body.Return(body.Multiply(body.Parameter<float>("left"), body.Parameter<int>("right")))))
+                .AddMethod("Long", typeof(long), method => method
+                    .WithParameter<long>("left")
+                    .WithParameter<int>("right")
+                    .EmitsBody(body => body.Return(body.Subtract(body.Parameter<long>("left"), body.Parameter<int>("right")))))
+                .AddMethod("Nullable", typeof(int), method => method
+                    .WithParameter<int?>("value")
+                    .EmitsBody(body => body.Return(body.Coalesce(body.Parameter<int?>("value"), body.Constant(9)))))
+                .AddMethod("Object", typeof(object), method => method
+                    .WithParameter<object>("value")
+                    .EmitsBody(body => body.Return(body.Coalesce(body.Parameter<object>("value"), body.Constant("fallback"))))))
+            .Build();
+
+        var type = context.GetClrType("Numeric");
+        var instance = Activator.CreateInstance(type)!;
+
+        Assert.True((bool)type.GetMethod("Double")!.Invoke(instance, new object[] { 2.5d, 2 })!);
+        Assert.Equal(7.5f, type.GetMethod("Float")!.Invoke(instance, new object[] { 2.5f, 3 }));
+        Assert.Equal(7L, type.GetMethod("Long")!.Invoke(instance, new object[] { 9L, 2 }));
+        Assert.Equal(9, type.GetMethod("Nullable")!.Invoke(instance, new object[] { null! }));
+        Assert.Equal(4, type.GetMethod("Nullable")!.Invoke(instance, new object[] { 4 }));
+        Assert.Equal("fallback", type.GetMethod("Object")!.Invoke(instance, new object[] { null! }));
+        Assert.Equal("value", type.GetMethod("Object")!.Invoke(instance, new object[] { "value" }));
+    }
+
+    [Fact]
     public void Expression_Emitter_Supports_Operators_Members_Construction_And_Control_Flow()
     {
         var context = new BeeAssemblyBuilder(NewAssemblyName())
