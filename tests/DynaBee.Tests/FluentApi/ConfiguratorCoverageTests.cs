@@ -474,6 +474,26 @@ public sealed class ConfiguratorCoverageTests
     }
 
     [Fact]
+    public void Property_Override_Handles_Setter_Only_Base_Properties_Without_Optional_Collections()
+    {
+        var property = typeof(SetterOnlyOverrideBase).GetProperty(nameof(SetterOnlyOverrideBase.Value))!;
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("SetterOnlyOverride", type =>
+            {
+                type.Inherits<SetterOnlyOverrideBase>();
+                type.AddElementConfigurator(new PropertyOverrideConfigurator(
+                    property,
+                    getter: null,
+                    setter: new BeePropertyAccessorBuilder(),
+                    attributes: null,
+                    metadata: null));
+            })
+            .Build();
+
+        ((SetterOnlyOverrideBase)context.CreateInstance("SetterOnlyOverride")).Value = 4;
+    }
+
+    [Fact]
     public void Expression_Emitter_Translates_Operators_Calls_Members_Construction_And_Conversions()
     {
         Expression<Func<int, int, int>> modulo = (left, right) => left % right;
@@ -660,6 +680,14 @@ public sealed class ConfiguratorCoverageTests
     public class FinalOverrideBase : OverrideBase
     {
         public sealed override int Number { get; set; }
+    }
+
+    public class SetterOnlyOverrideBase
+    {
+        public virtual int Value
+        {
+            set { }
+        }
     }
 
     public sealed class ConstructorBaseText
