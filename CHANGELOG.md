@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- Added generation-plan validation with structured diagnostics, stable codes, and pre-emission failure through `DynaBeeGenerationPlan.Validate()`.
+- Added fluent reflected-interface contract generation through `ImplementInterface(...)`, including overload selection and explicit coverage checks.
+- Added method-body control flow: `While(...)`, `Break()`, `Continue()`, `Switch(...)`, `Try(...)`, `Using(...)`, and `Throw(...)`.
+- Added `CallBase()` and `Intercept(...)` for safe base-method dispatch with before, after, and finally interceptor stages.
+- Added generated generic classes and generic methods with generic parameter constraints.
+- Added generated delegate events, dictionary-backed indexers, and CLR operator/conversion method support.
+- Added DI-managed generation-plan execution, plan fingerprints, cache abstraction, and collectible assembly context leases.
+- Added deterministic generation-plan C# export with source maps and UTF-8 source output.
+- Added the extension SDK: DI-discovered generation extensions, typed metadata schemas, validation callbacks, pre-build hooks, and generated-context callbacks.
+- Expanded `DynaBee.Testing` with diagnostic severities, method/property assertions, plan source snapshots, and exact source assertions.
+
+### Changed
+- Generation plans now retain method parameter signatures for validation, diagnostics, and source export.
+- Plan execution and extension registration are DI-first; no static registration state is required.
+
 ## [v1.4.0] - 2026-08-07
 
 ### Added
