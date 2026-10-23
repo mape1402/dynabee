@@ -12,6 +12,7 @@ namespace DynaBee.FluentApi
         private readonly bool _registerInDi;
         private readonly Dictionary<MethodInfo, Action<BeeMethodBuilder>> _methods = new();
         private readonly Dictionary<PropertyInfo, Action<BeePropertyBuilder>> _properties = new();
+        private readonly Dictionary<EventInfo, Action<BeeEventBuilder>> _events = new();
         private bool _requireExplicitImplementations;
 
         internal BeeInterfaceContractBuilder(BeeClassBuilder owner, Type interfaceType, bool registerInDi)
@@ -105,22 +106,41 @@ namespace DynaBee.FluentApi
             return this;
         }
 
+        /// <summary>
+        /// Configures a contract event that has a unique name.
+        /// </summary>
+        /// <param name="name">Event name.</param>
+        /// <param name="configure">Event configuration.</param>
+        /// <returns>The same contract builder.</returns>
+        public BeeInterfaceContractBuilder Event(string name, Action<BeeEventBuilder> configure)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException(nameof(name));
+
+            var @event = GetEvents().SingleOrDefault(x => string.Equals(x.Name, name, StringComparison.Ordinal));
+            if (@event == null)
+                throw new MissingMemberException(_interfaceType.FullName, name);
+
+            if (_events.ContainsKey(@event))
+                throw new InvalidOperationException($"Interface event '{_interfaceType.FullName}.{name}' is already configured.");
+
+            _events.Add(@event, configure ?? throw new ArgumentNullException(nameof(configure)));
+            return this;
+        }
+
         internal void Apply()
         {
-            var events = _interfaceType.GetEvents();
-            if (events.Length != 0)
-            {
-                throw new NotSupportedException(
-                    $"Interface '{_interfaceType.FullName}' contains events. Event implementation is not available yet.");
-            }
-
             var methods = GetMethods();
             var properties = GetProperties();
+            var events = GetEvents();
             if (_requireExplicitImplementations)
             {
                 var missingMethods = methods.Where(x => !_methods.ContainsKey(x)).Select(FormatMethod);
-                var missingProperties = properties.Where(x => !_properties.ContainsKey(x)).Select(x => x.Name);
-                var missing = missingMethods.Concat(missingProperties).ToArray();
+                var missingProperties = properties
+                    .Where(x => x.GetIndexParameters().Length == 0 && !_properties.ContainsKey(x))
+                    .Select(x => x.Name);
+                var missingEvents = events.Where(x => !_events.ContainsKey(x)).Select(x => x.Name);
+                var missing = missingMethods.Concat(missingProperties).Concat(missingEvents).ToArray();
                 if (missing.Length != 0)
                 {
                     throw new InvalidOperationException(
@@ -131,8 +151,24 @@ namespace DynaBee.FluentApi
             _owner.Implements(_interfaceType, _registerInDi);
             foreach (var property in properties)
             {
+                if (property.GetIndexParameters().Length != 0)
+                {
+                    if (property.GetIndexParameters().Length != 1)
+                        throw new NotSupportedException($"Interface indexer '{_interfaceType.FullName}.{property.Name}' must have exactly one index parameter.");
+
+                    var index = property.GetIndexParameters()[0];
+                    _owner.AddIndexer(property.Name, index.ParameterType, property.PropertyType);
+                    continue;
+                }
+
                 _properties.TryGetValue(property, out var configure);
                 _owner.AddProperty(property.Name, property.PropertyType, configure);
+            }
+
+            foreach (var @event in events)
+            {
+                _events.TryGetValue(@event, out var configure);
+                _owner.AddEvent(@event.Name, @event.EventHandlerType, configure);
             }
 
             foreach (var method in methods)
@@ -156,6 +192,9 @@ namespace DynaBee.FluentApi
 
         private PropertyInfo[] GetProperties()
             => _interfaceType.GetProperties();
+
+        private EventInfo[] GetEvents()
+            => _interfaceType.GetEvents();
 
         private static string FormatMethod(MethodInfo method)
             => $"{method.Name}({string.Join(", ", method.GetParameters().Select(x => x.ParameterType.Name))})";

@@ -56,6 +56,25 @@ public sealed class InterfaceContractTests
         Assert.Contains("overloaded", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void ImplementInterface_Generates_Contract_Events_And_Indexers()
+    {
+        var context = new BeeAssemblyBuilder("DynaBee.Tests.InterfaceContract.RuntimeMembers")
+            .AddClass("ObservableStore", type => type
+                .ImplementInterface<IObservableStore>(contract => contract
+                    .RequireExplicitImplementations()
+                    .Event(nameof(IObservableStore.Changed), _ => { })))
+            .Build();
+        var store = context.CreateInstance<IObservableStore>("ObservableStore");
+        EventHandler handler = (_, _) => { };
+
+        store[3] = "bee";
+        store.Changed += handler;
+
+        Assert.Equal("bee", store[3]);
+        store.Changed -= handler;
+    }
+
     public interface IContract
     {
         string Name { get; set; }
@@ -65,5 +84,12 @@ public sealed class InterfaceContractTests
         string Format(int value);
 
         string Format(decimal value);
+    }
+
+    public interface IObservableStore
+    {
+        event EventHandler Changed;
+
+        string this[int key] { get; set; }
     }
 }
