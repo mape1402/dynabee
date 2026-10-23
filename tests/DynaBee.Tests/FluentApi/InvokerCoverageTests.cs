@@ -2,6 +2,8 @@ namespace DynaBee.Tests.FluentApi;
 
 using DynaBee.FluentApi;
 using DynaBee.FluentApi.Invocation;
+using System.Reflection;
+using System.Reflection.Emit;
 
 public sealed class InvokerCoverageTests
 {
@@ -256,6 +258,27 @@ public sealed class InvokerCoverageTests
             failingAdapter.Invoke(new object[] { null! })).Message);
     }
 
+    [Fact]
+    public void Runtime_Delegates_Without_Parameter_Metadata_Are_Supported()
+    {
+        var context = CreateContext();
+        var instance = context.CreateInstance("Dispatch");
+        var factoryDelegateType = CreateUnnamedDelegateType(typeof(object));
+        var boundDelegateType = CreateUnnamedDelegateType(typeof(int), typeof(int));
+        var openDelegateType = CreateUnnamedDelegateType(typeof(int), typeof(object), typeof(int));
+
+        var factory = (Delegate)context.CreateFactoryDelegate(factoryDelegateType, "Factory", Type.EmptyTypes);
+        var bound = (Delegate)context.CreateBoundDelegate(
+            boundDelegateType, "Dispatch", instance, "Increment", new[] { typeof(int) });
+        var open = CreateOpenDelegate(context, openDelegateType, "Dispatch", "Increment", new[] { typeof(int) });
+
+        Assert.All(factoryDelegateType.GetMethod(nameof(Action.Invoke))!.GetParameters(), parameter => Assert.Null(parameter.Name));
+        Assert.All(boundDelegateType.GetMethod(nameof(Action.Invoke))!.GetParameters(), parameter => Assert.Null(parameter.Name));
+        Assert.Equal(context.GetClrType("Factory"), factory.DynamicInvoke()!.GetType());
+        Assert.Equal(3, bound.DynamicInvoke(2));
+        Assert.Equal(4, open.DynamicInvoke(instance, 3));
+    }
+
     private static IAssemblyContext CreateContext()
     {
         DispatchRecorder.LastValue = null;
@@ -293,6 +316,46 @@ public sealed class InvokerCoverageTests
                         body.Parameter<string>("value"))))))
             .AddClass("Factory", type => type.AddConstructor())
             .Build();
+    }
+
+    private static Delegate CreateOpenDelegate(
+        IAssemblyContext context,
+        Type delegateType,
+        string typeName,
+        string methodName,
+        IReadOnlyList<Type> parameterTypes)
+    {
+        var method = typeof(AssemblyContextInvokerExtensions)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Single(candidate => candidate.Name == nameof(AssemblyContextInvokerExtensions.CreateOpenDelegate)
+                && candidate.IsGenericMethodDefinition);
+
+        return (Delegate)method.MakeGenericMethod(delegateType)
+            .Invoke(null, new object[] { context, typeName, methodName, parameterTypes })!;
+    }
+
+    private static Type CreateUnnamedDelegateType(Type returnType, params Type[] parameterTypes)
+    {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName($"DynaBee.Tests.UnnamedDelegate.{Guid.NewGuid():N}"),
+            AssemblyBuilderAccess.Run);
+        var builder = assembly.DefineDynamicModule("Delegates")
+            .DefineType(
+                $"UnnamedDelegate{Guid.NewGuid():N}",
+                TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class,
+                typeof(MulticastDelegate));
+        var constructor = builder.DefineConstructor(
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.RTSpecialName,
+            CallingConventions.Standard,
+            new[] { typeof(object), typeof(IntPtr) });
+        constructor.SetImplementationFlags(MethodImplAttributes.Runtime | MethodImplAttributes.Managed);
+        var invoke = builder.DefineMethod(
+            nameof(Action.Invoke),
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            returnType,
+            parameterTypes);
+        invoke.SetImplementationFlags(MethodImplAttributes.Runtime | MethodImplAttributes.Managed);
+        return builder.CreateTypeInfo()!.AsType();
     }
 
     public static class DispatchRecorder
