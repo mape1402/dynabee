@@ -390,6 +390,29 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.False(BeeIlConversions.CanConvert(typeof(DateTime), typeof(decimal)));
     }
 
+    [Fact]
+    public void Value_Expressions_Emit_Native_Table_And_NonVirtual_Member_Loads()
+    {
+        var il = new DynamicMethod("Expressions", typeof(void), new[] { typeof(ExpressionEmissionTarget) }).GetILGenerator();
+        var instance = new BeeParameterExpression("target", typeof(ExpressionEmissionTarget), 0);
+        var property = typeof(ExpressionEmissionTarget).GetProperty(nameof(ExpressionEmissionTarget.NonVirtual))!;
+        var indexer = typeof(ExpressionEmissionTarget).GetProperty("Item")!;
+
+        new BeeConstantExpression(null!, typeof(int)).EmitLoad(il);
+        new BeeConstantExpression(null!, typeof(string)).EmitLoad(il);
+        new BeeConstantExpression(1, typeof(int)).EmitLoad(il);
+        new BeeConstantExpression("text", typeof(string)).EmitLoad(il);
+        new BeeConstantExpression(true, typeof(bool)).EmitLoad(il);
+        new BeeConstantExpression(false, typeof(bool)).EmitLoad(il);
+        new BeeConstantExpression(1L, typeof(long)).EmitLoad(il);
+        new BeeConstantExpression(1f, typeof(float)).EmitLoad(il);
+        new BeeConstantExpression(1d, typeof(double)).EmitLoad(il);
+        new BeeConstantExpression(Guid.Empty, typeof(Guid)).EmitLoad(il);
+        new BeeNewExpression(typeof(ExpressionEmissionTarget), Array.Empty<BeeValueExpression>()).EmitLoad(il);
+        new BeePropertyExpression(instance, property).EmitLoad(il);
+        new BeeIndexerExpression(instance, new BeeConstantExpression(0, typeof(int)), indexer).EmitLoad(il);
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");
@@ -428,6 +451,13 @@ public sealed class MethodBodyAdvancedCoverageTests
         }
 
         public string Value { get; }
+    }
+
+    public sealed class ExpressionEmissionTarget
+    {
+        public int NonVirtual => 1;
+
+        public int this[int index] => index;
     }
 
     public struct ValueProbe : IDisposable
