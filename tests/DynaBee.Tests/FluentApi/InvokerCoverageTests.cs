@@ -104,6 +104,17 @@ public sealed class InvokerCoverageTests
     }
 
     [Fact]
+    public void Object_Adapter_Arity_Errors_Keep_Diagnostics_When_Context_Is_Missing()
+    {
+        Assert.Contains("Assembly=''", Assert.Throws<InvalidOperationException>(() =>
+            AssemblyContextInvokerExtensions.CreateObjectAdapter(null!, "Dispatch", new object(), "Echo", Type.EmptyTypes)).Message);
+        Assert.Contains("Assembly=''", Assert.Throws<InvalidOperationException>(() =>
+            AssemblyContextInvokerExtensions.CreateObjectAdapter2(null!, "Dispatch", new object(), "Echo", Type.EmptyTypes)).Message);
+        Assert.Contains("Assembly=''", Assert.Throws<InvalidOperationException>(() =>
+            AssemblyContextInvokerExtensions.CreateObjectAdapter3(null!, "Dispatch", new object(), "Echo", Type.EmptyTypes)).Message);
+    }
+
+    [Fact]
     public void Invoker_Keys_Use_Type_Method_And_Parameter_Signatures_For_Equality()
     {
         var first = InvokerKey.Create("Dispatch", "Echo", new[] { typeof(string) });
