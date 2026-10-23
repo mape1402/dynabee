@@ -191,6 +191,17 @@ public sealed class PlanAndDiagnosticsCoverageTests
         Assert.Equal("Protected", InvokeDiagnosticHelper("GetFieldAccess", GetField("ProtectedField")));
         Assert.Equal("ProtectedInternal", InvokeDiagnosticHelper("GetFieldAccess", GetField("ProtectedInternalField")));
         Assert.Equal("PrivateProtected", InvokeDiagnosticHelper("GetFieldAccess", GetField("PrivateProtectedField")));
+
+        var dynamicMethod = new System.Reflection.Emit.DynamicMethod("Dynamic", typeof(void), Type.EmptyTypes);
+        var dynamicAssembly = System.Reflection.Emit.AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName($"DynaBee.Tests.UnknownAccess.{Guid.NewGuid():N}"),
+            System.Reflection.Emit.AssemblyBuilderAccess.Run);
+        var field = dynamicAssembly.DefineDynamicModule("Unknown").DefineType("Unknown", TypeAttributes.Public)
+            .DefineField("Value", typeof(int), FieldAttributes.Static);
+
+        Assert.Equal("Public", InvokeDiagnosticHelper("GetTypeAccess", typeof(List<>).GetGenericArguments()[0]));
+        Assert.Equal("Public", InvokeDiagnosticHelper("GetMethodAccess", dynamicMethod));
+        Assert.Equal("Unknown", InvokeDiagnosticHelper("GetFieldAccess", field));
     }
 
     [Fact]
