@@ -354,6 +354,31 @@ public sealed class MethodBodyAdvancedCoverageTests
     }
 
     [Fact]
+    public void MethodBodyBuilder_Reports_Invalid_Internal_Call_Targets_And_Nullable_Metadata()
+    {
+        var validateCallTarget = typeof(BeeMethodBodyBuilder).GetMethod(
+            "ValidateCallTarget",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        var nullableConstructor = typeof(BeeIlConversions).GetMethod(
+            "GetNullableConstructor",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        var instanceMethod = typeof(string).GetMethod(nameof(string.ToString), Type.EmptyTypes)!;
+        var unboundMethod = new DynamicMethod("Unbound", typeof(void), Type.EmptyTypes);
+        var instance = new BeeParameterExpression("instance", typeof(object), 0);
+
+        var missingInstance = Assert.Throws<TargetInvocationException>(() =>
+            validateCallTarget.Invoke(null, new object[] { null!, instanceMethod, false }));
+        var missingDeclaringType = Assert.Throws<TargetInvocationException>(() =>
+            validateCallTarget.Invoke(null, new object[] { instance, unboundMethod, false }));
+        var missingConstructor = Assert.Throws<TargetInvocationException>(() =>
+            nullableConstructor.Invoke(null, new object[] { typeof(Guid), typeof(int) }));
+
+        Assert.IsType<InvalidOperationException>(missingInstance.InnerException);
+        Assert.IsType<InvalidOperationException>(missingDeclaringType.InnerException);
+        Assert.IsType<MissingMethodException>(missingConstructor.InnerException);
+    }
+
+    [Fact]
     public void GeneratedBodies_Use_Foreach_Break_And_Null_Base_Call_Arguments()
     {
         var baseMethod = typeof(BaseCallTarget).GetMethod(nameof(BaseCallTarget.GetValue))!;

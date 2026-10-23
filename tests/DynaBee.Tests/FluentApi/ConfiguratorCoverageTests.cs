@@ -733,6 +733,37 @@ public sealed class ConfiguratorCoverageTests
         Assert.True((bool)truthy.Invoke(conversions, new object[] { new Truthy(1) })!);
     }
 
+    [Fact]
+    public void Expression_Emitter_Protects_Its_Low_Level_Member_And_Boolean_Emission_Contracts()
+    {
+        var parameter = Expression.Parameter(typeof(ExpressionWriteOnlyProbe), "value");
+        var expression = Expression.MakeMemberAccess(
+            parameter,
+            typeof(ExpressionWriteOnlyProbe).GetProperty(nameof(ExpressionWriteOnlyProbe.Value))!);
+        var dynamicMethod = new DynamicMethod("Expression", typeof(int), new[] { typeof(ExpressionWriteOnlyProbe) });
+        var contextType = typeof(ExpressionIlEmitter).GetNestedType("EmitContext", BindingFlags.NonPublic)!;
+        var context = Activator.CreateInstance(
+            contextType,
+            dynamicMethod.GetILGenerator(),
+            new[] { parameter },
+            new[] { typeof(ExpressionWriteOnlyProbe) },
+            new[] { 0 })!;
+        var emitMember = typeof(ExpressionIlEmitter).GetMethod("EmitMemberAccess", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var emitConvert = typeof(ExpressionIlEmitter).GetMethod("EmitConvert", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var booleanMethod = new DynamicMethod("Boolean", typeof(bool), new[] { typeof(int) });
+        var booleanIl = booleanMethod.GetILGenerator();
+
+        var writeOnly = Assert.Throws<TargetInvocationException>(() => emitMember.Invoke(null, new[] { expression, context }));
+        booleanIl.Emit(OpCodes.Ldarg_0);
+        emitConvert.Invoke(null, new object[] { typeof(int), typeof(bool), booleanIl });
+        booleanIl.Emit(OpCodes.Ret);
+        var toBoolean = (Func<int, bool>)booleanMethod.CreateDelegate(typeof(Func<int, bool>));
+
+        Assert.IsType<InvalidOperationException>(writeOnly.InnerException);
+        Assert.False(toBoolean(0));
+        Assert.True(toBoolean(1));
+    }
+
     private static void BuildInvalid(Action<BeeClassBuilder> configure)
         => new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("Invalid", type =>
@@ -900,6 +931,14 @@ public sealed class ConfiguratorCoverageTests
 
         public static implicit operator bool(Truthy value)
             => value._value != 0;
+    }
+
+    public sealed class ExpressionWriteOnlyProbe
+    {
+        public int Value
+        {
+            set { }
+        }
     }
 
     public class FinalOverrideBase : OverrideBase
