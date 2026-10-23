@@ -1,5 +1,7 @@
 namespace DynaBee.Tests.FluentApi;
 
+using System.Reflection;
+using System.Reflection.Emit;
 using DynaBee.FluentApi;
 using DynaBee.FluentApi.Generation;
 
@@ -67,5 +69,49 @@ public sealed class GenerationPlanValidationTests
     public void SourceExporter_Rejects_A_Null_Plan()
     {
         Assert.Throws<ArgumentNullException>(() => new DynaBeeSourceExporter().Export(null!));
+    }
+
+    [Fact]
+    public void Declarative_Overrides_Support_Reflected_Parameters_Without_Names()
+    {
+        var baseType = CreateBaseTypeWithUnnamedParameter();
+        var baseMethod = baseType.GetMethod("Identity")!;
+        var plan = new DynaBeeGenerationPlan("DynaBee.Tests.PlanUnnamedOverride")
+            .AddClass("Derived", type => type
+                .Inherits(baseType)
+                .OverrideMethod(baseMethod, method => method
+                    .EmitsBody(body => body.Return(body.Parameter<int>("arg0")))));
+
+        var context = plan.ApplyTo(new BeeAssemblyBuilder(plan.AssemblyName)).Build();
+
+        Assert.Null(baseMethod.GetParameters()[0].Name);
+        Assert.Equal(9, baseMethod.Invoke(context.CreateInstance("Derived"), new object[] { 9 }));
+    }
+
+    private static Type CreateBaseTypeWithUnnamedParameter()
+    {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName($"DynaBee.Tests.UnnamedPlanBase.{Guid.NewGuid():N}"),
+            AssemblyBuilderAccess.Run);
+        var type = assembly.DefineDynamicModule("Contracts").DefineType(
+            "UnnamedPlanBase",
+            TypeAttributes.Public | TypeAttributes.Class);
+        var constructor = type.DefineConstructor(
+            MethodAttributes.Public,
+            CallingConventions.Standard,
+            Type.EmptyTypes);
+        var constructorIl = constructor.GetILGenerator();
+        constructorIl.Emit(OpCodes.Ldarg_0);
+        constructorIl.Emit(OpCodes.Call, typeof(object).GetConstructor(Type.EmptyTypes)!);
+        constructorIl.Emit(OpCodes.Ret);
+
+        var method = type.DefineMethod(
+            "Identity",
+            MethodAttributes.Public | MethodAttributes.Virtual,
+            typeof(int),
+            new[] { typeof(int) });
+        method.GetILGenerator().Emit(OpCodes.Ldarg_1);
+        method.GetILGenerator().Emit(OpCodes.Ret);
+        return type.CreateTypeInfo()!.AsType();
     }
 }

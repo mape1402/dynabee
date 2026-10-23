@@ -81,6 +81,25 @@ public sealed class RuntimeInfrastructureCoverageTests
         Assert.Equal(generic, BeeType.GenericParameter("T").Resolve(owner));
         Assert.Throws<ArgumentNullException>(() => ((BeeType)typeof(int)).Resolve(null!));
         Assert.Throws<InvalidOperationException>(() => BeeType.GenericParameter("Missing").Resolve(owner));
+        Assert.Throws<InvalidOperationException>(() => BeeType.GenericParameter("T").Resolve(new DelegatingTypeContextBuilder()));
+    }
+
+    private sealed class DelegatingTypeContextBuilder : ITypeContextBuilder
+    {
+        public IAssemblyContextBuilder AssemblyBuilderContext => throw new NotSupportedException();
+
+        public string Name => "Delegating";
+
+        public TypeBuilder TypeBuilder => throw new NotSupportedException();
+
+        public IElementContextBuilder AddElement(string name, ElementType elementType, ElementBuilderAction buildAction, IReadOnlyDictionary<string, object> metadata = null)
+            => throw new NotSupportedException();
+
+        public void SetMetadata(string key, object value)
+            => throw new NotSupportedException();
+
+        public ITypeContext Build()
+            => throw new NotSupportedException();
     }
 
     public sealed class ReferenceAttribute : Attribute

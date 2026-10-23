@@ -77,12 +77,24 @@ public sealed class ContextInfrastructureCoverageTests
         Assert.Throws<ArgumentNullException>(() => type.RegisterMethod("method", Type.EmptyTypes, null!));
         Assert.Throws<ArgumentNullException>(() => type.RegisterGenericParameter("T", null!));
 
+        var overload = typeBuilder.DefineMethod(
+            "Match",
+            MethodAttributes.Public | MethodAttributes.Static,
+            typeof(int),
+            new[] { typeof(int) });
+        overload.GetILGenerator().Emit(OpCodes.Ldc_I4_0);
+        overload.GetILGenerator().Emit(OpCodes.Ret);
+        type.RegisterMethod("Match", new[] { typeof(int) }, overload);
+
         var completed = type.Build();
         Assert.Equal(new[] { "field", "property", "method", "method-overload", "constructor" }, events);
         Assert.Equal("value", completed.GetMetadata("tag"));
         Assert.False(type.TryGetField("missing", out _));
         Assert.False(type.TryGetProperty("missing", out _));
         Assert.False(type.TryGetMethod("missing", Type.EmptyTypes, out _));
+        Assert.True(type.TryGetMethod("Match", new[] { typeof(int) }, out var registeredMethod));
+        Assert.Same(overload, registeredMethod);
+        Assert.False(type.TryGetMethod("Match", new[] { typeof(string) }, out _));
         Assert.False(type.TryGetGenericParameter("missing", out _));
 
         Assert.Throws<InvalidOperationException>(() => assembly.AddTypeBuilder("Ordered", module.DefineType("Other", TypeAttributes.Public)));

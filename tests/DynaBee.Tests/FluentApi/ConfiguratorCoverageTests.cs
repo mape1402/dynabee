@@ -192,7 +192,9 @@ public sealed class ConfiguratorCoverageTests
         var protectedOverrideMethod = typeof(ValidationBase).GetMethod("ProtectedTransform", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var interfaceMethod = typeof(IValidationContract).GetMethod(nameof(IValidationContract.Transform))!;
         var plainMethod = typeof(ValidationBase).GetMethod(nameof(ValidationBase.Plain))!;
+        var unboundMethod = new DynamicMethod("Unbound", typeof(int), new[] { typeof(int) });
 
+        Assert.Throws<ArgumentException>(() => new MethodConfigurator(" ", typeof(int), Array.Empty<(string Name, BeeType Type)>(), null, null, null, null, false, false, default, null));
         Assert.Throws<ArgumentNullException>(() => new MethodConfigurator("Value", typeof(int), null!, null, null, null, null, false, false, default, null));
         Assert.Throws<ArgumentNullException>(() => CreateMethodConfigurator().Configure(null!));
 
@@ -211,6 +213,8 @@ public sealed class ConfiguratorCoverageTests
             CreateMethodConfigurator(isStatic: true, interfaceMethod: interfaceMethod)));
         Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
             CreateMethodConfigurator(interfaceMethod: plainMethod)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(interfaceMethod: unboundMethod)));
         Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
             CreateMethodConfigurator(returnType: typeof(string), interfaceMethod: interfaceMethod)));
         Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
