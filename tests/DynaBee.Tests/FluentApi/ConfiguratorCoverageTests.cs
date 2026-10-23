@@ -100,6 +100,7 @@ public sealed class ConfiguratorCoverageTests
         var writable = typeof(OverrideBase).GetProperty(nameof(OverrideBase.Number))!;
         var readOnly = typeof(OverrideBase).GetProperty(nameof(OverrideBase.DefaultNumber))!;
         var nonVirtual = typeof(OverrideBase).GetProperty(nameof(OverrideBase.NonVirtual))!;
+        var final = typeof(FinalOverrideBase).GetProperty(nameof(FinalOverrideBase.Number))!;
         var virtualMethod = typeof(OverrideBase).GetMethod(nameof(OverrideBase.VirtualMethod))!;
         var regularMethod = typeof(OverrideBase).GetMethod(nameof(OverrideBase.RegularMethod))!;
 
@@ -110,6 +111,11 @@ public sealed class ConfiguratorCoverageTests
         Assert.Throws<InvalidOperationException>(() => BuildInvalid(type => type.OverrideMethod(regularMethod, method => method.EmitsBody(body => body.Return(body.Constant(1))))));
         Assert.Throws<InvalidOperationException>(() => BuildInvalid(type => type.OverrideMethod(virtualMethod, method => method.AsStatic().EmitsBody(body => body.Return(body.Constant(1))))));
         Assert.Throws<InvalidOperationException>(() => BuildInvalid(type => type.OverrideMethod(virtualMethod, method => method.WithAccess(MethodAccessModifier.Protected).EmitsBody(body => body.Return(body.Constant(1))))));
+        Assert.Throws<InvalidOperationException>(() => new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("FinalOverride", type => type
+                .Inherits<FinalOverrideBase>()
+                .OverrideProperty(final, property => property.Getter(_ => { })))
+            .Build());
     }
 
     [Fact]
@@ -649,6 +655,11 @@ public sealed class ConfiguratorCoverageTests
 
         protected virtual int ProtectedTransform(int value)
             => value;
+    }
+
+    public class FinalOverrideBase : OverrideBase
+    {
+        public sealed override int Number { get; set; }
     }
 
     public sealed class ConstructorBaseText

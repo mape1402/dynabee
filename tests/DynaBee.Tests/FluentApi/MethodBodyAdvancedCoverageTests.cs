@@ -302,11 +302,13 @@ public sealed class MethodBodyAdvancedCoverageTests
     public void MethodBodyBuilder_Resolves_Coalesce_Result_Types_And_Null_Argument_Collections()
     {
         var body = CreateBody(("value", typeof(string), 0));
+        var genericParameter = typeof(List<>).GetGenericArguments()[0];
 
         Assert.Equal(typeof(RefProbe), body.New(typeof(RefProbe), null!).Type);
         Assert.Equal(typeof(string), body.Concat(null!).Type);
         Assert.Equal(typeof(object), body.Coalesce(body.Parameter<string>("value"), body.Constant(null!, typeof(object))).Type);
         Assert.Equal(typeof(string), body.Coalesce(body.Parameter<string>("value"), body.Constant(10)).Type);
+        Assert.Throws<MissingMethodException>(() => body.StaticCall(typeof(Convert), "Missing", new[] { genericParameter }));
     }
 
     [Fact]
