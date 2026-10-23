@@ -62,4 +62,10 @@ public sealed class GenerationPlanValidationTests
 
         Assert.Contains(result.Diagnostics, x => x.Code == "DBP032");
     }
+
+    [Fact]
+    public void SourceExporter_Rejects_A_Null_Plan()
+    {
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeSourceExporter().Export(null!));
+    }
 }
