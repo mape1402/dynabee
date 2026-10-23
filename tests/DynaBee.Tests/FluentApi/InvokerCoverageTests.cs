@@ -264,10 +264,13 @@ public sealed class InvokerCoverageTests
         var context = CreateContext();
         var instance = context.CreateInstance("Dispatch");
         var factoryDelegateType = CreateUnnamedDelegateType(typeof(object));
+        var argumentFactoryDelegateType = CreateUnnamedDelegateType(typeof(object), typeof(string));
         var boundDelegateType = CreateUnnamedDelegateType(typeof(int), typeof(int));
         var openDelegateType = CreateUnnamedDelegateType(typeof(int), typeof(object), typeof(int));
 
         var factory = (Delegate)context.CreateFactoryDelegate(factoryDelegateType, "Factory", Type.EmptyTypes);
+        var argumentFactory = (Delegate)context.CreateFactoryDelegate(
+            argumentFactoryDelegateType, "ArgumentFactory", new[] { typeof(string) });
         var bound = (Delegate)context.CreateBoundDelegate(
             boundDelegateType, "Dispatch", instance, "Increment", new[] { typeof(int) });
         var open = CreateOpenDelegate(context, openDelegateType, "Dispatch", "Increment", new[] { typeof(int) });
@@ -275,8 +278,31 @@ public sealed class InvokerCoverageTests
         Assert.All(factoryDelegateType.GetMethod(nameof(Action.Invoke))!.GetParameters(), parameter => Assert.Null(parameter.Name));
         Assert.All(boundDelegateType.GetMethod(nameof(Action.Invoke))!.GetParameters(), parameter => Assert.Null(parameter.Name));
         Assert.Equal(context.GetClrType("Factory"), factory.DynamicInvoke()!.GetType());
+        Assert.Equal(context.GetClrType("ArgumentFactory"), argumentFactory.DynamicInvoke("value")!.GetType());
         Assert.Equal(3, bound.DynamicInvoke(2));
         Assert.Equal(4, open.DynamicInvoke(instance, 3));
+    }
+
+    [Fact]
+    public void Invokers_Accept_Null_Reference_And_Boxed_Nullable_Arguments()
+    {
+        var context = CreateContext();
+        var instance = context.CreateInstance("Dispatch");
+        var echoAdapter = context.CreateObjectAdapter("Dispatch", instance, "Echo", new[] { typeof(string) });
+        var echoInvoker = context.CreateMethodInvoker("Dispatch", "Echo", new[] { typeof(string) });
+        var referenceFailure = new DynaBeeObjectMethodAdapter(
+            "Coverage", "Dispatch", "Reference", new[] { typeof(string) }, typeof(string),
+            _ => throw new NullReferenceException("failure"));
+        var nullableFailure = new DynaBeeObjectMethodAdapter(
+            "Coverage", "Dispatch", "Nullable", new[] { typeof(int?) }, typeof(string),
+            _ => throw new NullReferenceException("failure"));
+
+        Assert.Null(echoAdapter(null!));
+        Assert.Null(echoInvoker.Invoke(instance, new object[] { null! }));
+        Assert.Contains("adapter invocation failed", Assert.Throws<InvalidOperationException>(() =>
+            referenceFailure.Invoke(new object[] { null! })).Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("adapter invocation failed", Assert.Throws<InvalidOperationException>(() =>
+            nullableFailure.Invoke(new object[] { 7 })).Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private static IAssemblyContext CreateContext()
@@ -315,6 +341,8 @@ public sealed class InvokerCoverageTests
                         new[] { typeof(string) },
                         body.Parameter<string>("value"))))))
             .AddClass("Factory", type => type.AddConstructor())
+            .AddClass("ArgumentFactory", type => type
+                .AddConstructor(constructor => constructor.WithParameter<string>("value")))
             .Build();
     }
 
