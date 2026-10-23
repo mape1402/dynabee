@@ -159,6 +159,48 @@ public sealed class PlanAndDiagnosticsCoverageTests
         Assert.Throws<ArgumentNullException>(() => DynaBeeDiagnosticsExtensions.GetDiagnostics(null!));
     }
 
+    [Fact]
+    public void Diagnostics_Resolve_All_Clr_Access_Modifier_Shapes()
+    {
+        Assert.Equal(0, new AccessShapes().ReadPrivateField());
+        Assert.Equal("Public", InvokeDiagnosticHelper("GetTypeAccess", typeof(AccessShapes)));
+        Assert.Equal("Public", InvokeDiagnosticHelper("GetTypeAccess", typeof(AccessShapes.PublicNested)));
+        Assert.Equal("Internal", InvokeDiagnosticHelper("GetTypeAccess", typeof(InternalTopLevelAccessShape)));
+        Assert.Equal("Internal", InvokeDiagnosticHelper("GetTypeAccess", typeof(AccessShapes.InternalNested)));
+        Assert.Equal("Private", InvokeDiagnosticHelper("GetTypeAccess", GetNestedType("PrivateNested")));
+        Assert.Equal("Protected", InvokeDiagnosticHelper("GetTypeAccess", GetNestedType("ProtectedNested")));
+        Assert.Equal("ProtectedInternal", InvokeDiagnosticHelper("GetTypeAccess", typeof(AccessShapes.ProtectedInternalNested)));
+        Assert.Equal("PrivateProtected", InvokeDiagnosticHelper("GetTypeAccess", GetNestedType("PrivateProtectedNested")));
+
+        Assert.Equal("Public", InvokeDiagnosticHelper("GetMethodAccess", GetMethod(nameof(AccessShapes.PublicMethod))));
+        Assert.Equal("Private", InvokeDiagnosticHelper("GetMethodAccess", GetMethod("PrivateMethod")));
+        Assert.Equal("Internal", InvokeDiagnosticHelper("GetMethodAccess", GetMethod("InternalMethod")));
+        Assert.Equal("Protected", InvokeDiagnosticHelper("GetMethodAccess", GetMethod("ProtectedMethod")));
+        Assert.Equal("ProtectedInternal", InvokeDiagnosticHelper("GetMethodAccess", GetMethod("ProtectedInternalMethod")));
+        Assert.Equal("PrivateProtected", InvokeDiagnosticHelper("GetMethodAccess", GetMethod("PrivateProtectedMethod")));
+
+        Assert.Equal("Public", InvokeDiagnosticHelper("GetFieldAccess", GetField(nameof(AccessShapes.PublicField))));
+        Assert.Equal("Private", InvokeDiagnosticHelper("GetFieldAccess", GetField("PrivateField")));
+        Assert.Equal("Internal", InvokeDiagnosticHelper("GetFieldAccess", GetField("InternalField")));
+        Assert.Equal("Protected", InvokeDiagnosticHelper("GetFieldAccess", GetField("ProtectedField")));
+        Assert.Equal("ProtectedInternal", InvokeDiagnosticHelper("GetFieldAccess", GetField("ProtectedInternalField")));
+        Assert.Equal("PrivateProtected", InvokeDiagnosticHelper("GetFieldAccess", GetField("PrivateProtectedField")));
+    }
+
+    private static string InvokeDiagnosticHelper(string name, MemberInfo member)
+        => (string)typeof(DynaBeeDiagnosticsExtensions)
+            .GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)!
+            .Invoke(null, new object[] { member })!;
+
+    private static MethodInfo GetMethod(string name)
+        => typeof(AccessShapes).GetMethod(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+
+    private static FieldInfo GetField(string name)
+        => typeof(AccessShapes).GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+
+    private static Type GetNestedType(string name)
+        => typeof(AccessShapes).GetNestedType(name, BindingFlags.Public | BindingFlags.NonPublic)!;
+
     public interface IPlanContract
     {
         string Name { get; }
@@ -172,4 +214,35 @@ public sealed class PlanAndDiagnosticsCoverageTests
         {
         }
     }
+
+    public class AccessShapes
+    {
+        public int PublicField = 1;
+        private int PrivateField;
+        internal int InternalField = 1;
+        protected int ProtectedField = 1;
+        protected internal int ProtectedInternalField = 1;
+        private protected int PrivateProtectedField = 1;
+
+        public void PublicMethod() { }
+        private void PrivateMethod() { }
+        internal void InternalMethod() { }
+        protected void ProtectedMethod() { }
+        protected internal void ProtectedInternalMethod() { }
+        private protected void PrivateProtectedMethod() { }
+
+        public int ReadPrivateField()
+            => PrivateField;
+
+        public class PublicNested { }
+        internal class InternalNested { }
+        private class PrivateNested { }
+        protected class ProtectedNested { }
+        protected internal class ProtectedInternalNested { }
+        private protected class PrivateProtectedNested { }
+    }
+}
+
+internal class InternalTopLevelAccessShape
+{
 }
