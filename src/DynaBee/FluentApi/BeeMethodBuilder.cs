@@ -42,6 +42,8 @@ namespace DynaBee.FluentApi
         /// </summary>
         public BeeType ReturnType { get; }
 
+        internal IReadOnlyList<(string Name, BeeType Type)> Parameters => _parameters;
+
         /// <summary>
         /// Adds one parameter to the method.
         /// </summary>

@@ -158,6 +158,13 @@ namespace DynaBee.FluentApi.Generation
             return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()))).ToLowerInvariant();
         }
 
+        /// <summary>
+        /// Exports the declarative type shape as deterministic C# source.
+        /// </summary>
+        /// <returns>Generated source and source-map entries.</returns>
+        public DynaBeeSourceExportResult ExportSource()
+            => new DynaBeeSourceExporter().Export(this);
+
         private static void ValidateClass(DynaBeeGeneratedClassPlan classPlan, ICollection<DynaBeePlanDiagnostic> diagnostics)
         {
             if (classPlan.BaseType != null)
@@ -316,11 +323,12 @@ namespace DynaBee.FluentApi.Generation
     /// </summary>
     public sealed class DynaBeeGeneratedMemberPlan
     {
-        internal DynaBeeGeneratedMemberPlan(string name, ElementType elementType, Type valueType)
+        internal DynaBeeGeneratedMemberPlan(string name, ElementType elementType, Type valueType, IReadOnlyList<Type> parameterTypes = null)
         {
             Name = name;
             ElementType = elementType;
             ValueType = valueType;
+            ParameterTypes = parameterTypes ?? Array.Empty<Type>();
         }
 
         /// <summary>
@@ -337,6 +345,11 @@ namespace DynaBee.FluentApi.Generation
         /// Gets the member value type, return type, or <see langword="null"/> when not applicable.
         /// </summary>
         public Type ValueType { get; }
+
+        /// <summary>
+        /// Gets the planned method or constructor parameter types.
+        /// </summary>
+        public IReadOnlyList<Type> ParameterTypes { get; }
     }
 
     /// <summary>
@@ -464,8 +477,14 @@ namespace DynaBee.FluentApi.Generation
         /// <returns>The same class plan builder.</returns>
         public DynaBeeGeneratedClassPlanBuilder AddMethod(string name, BeeType returnType, Action<BeeMethodBuilder> configure = null)
         {
-            _members.Add(new DynaBeeGeneratedMemberPlan(name, ElementType.Method, returnType));
-            _operations.Add(type => type.AddMethod(name, returnType, configure));
+            var methodBuilder = new BeeMethodBuilder(name, returnType);
+            configure?.Invoke(methodBuilder);
+            _members.Add(new DynaBeeGeneratedMemberPlan(
+                name,
+                ElementType.Method,
+                returnType,
+                methodBuilder.Parameters.Select(x => (Type)x.Type).ToArray()));
+            _operations.Add(type => type.AddConfiguredMethod(methodBuilder));
             return this;
         }
 
@@ -494,8 +513,16 @@ namespace DynaBee.FluentApi.Generation
             if (baseMethod == null)
                 throw new ArgumentNullException(nameof(baseMethod));
 
-            _members.Add(new DynaBeeGeneratedMemberPlan(baseMethod.Name, ElementType.Method, baseMethod.ReturnType));
-            _operations.Add(type => type.OverrideMethod(baseMethod, configure));
+            var methodBuilder = new BeeMethodBuilder(baseMethod.Name, baseMethod.ReturnType)
+                .WithParameterRange(baseMethod.GetParameters().Select(x => (x.Name ?? $"arg{x.Position}", (BeeType)x.ParameterType)))
+                .Overrides(baseMethod);
+            configure?.Invoke(methodBuilder);
+            _members.Add(new DynaBeeGeneratedMemberPlan(
+                baseMethod.Name,
+                ElementType.Method,
+                baseMethod.ReturnType,
+                baseMethod.GetParameters().Select(x => x.ParameterType).ToArray()));
+            _operations.Add(type => type.AddConfiguredMethod(methodBuilder));
             return this;
         }
 
