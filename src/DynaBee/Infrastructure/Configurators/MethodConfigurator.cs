@@ -122,7 +122,8 @@ namespace DynaBee.Infrastructure.Configurators
                     returnType,
                     bodyParameters,
                     _isStatic ? null : typeContextBuilder.TypeBuilder,
-                    typeContextBuilder as TypeContextBuilder);
+                    typeContextBuilder as TypeContextBuilder,
+                    _overrideMethod);
                 _methodBody(bodyBuilder);
 
                 if (!bodyBuilder.HasReturn)

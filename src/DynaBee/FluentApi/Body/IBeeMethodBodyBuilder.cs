@@ -192,6 +192,19 @@ namespace DynaBee.FluentApi.Body
             params IBeeValueExpression[] arguments);
 
         /// <summary>
+        /// Calls the overridden base method using the current method parameters.
+        /// </summary>
+        /// <returns>A value expression representing the base method result.</returns>
+        IBeeValueExpression CallBase();
+
+        /// <summary>
+        /// Calls the overridden base method with explicit argument expressions.
+        /// </summary>
+        /// <param name="arguments">Arguments passed to the base method.</param>
+        /// <returns>A value expression representing the base method result.</returns>
+        IBeeValueExpression CallBase(params IBeeValueExpression[] arguments);
+
+        /// <summary>
         /// Creates a static method call expression.
         /// </summary>
         /// <param name="method">Static method to call. Closed generic methods are supported.</param>
