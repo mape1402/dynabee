@@ -413,6 +413,46 @@ namespace DynaBee.FluentApi.Generation
             => Implements(typeof(TInterface), registerInDi);
 
         /// <summary>
+        /// Adds a reflected interface contract whose methods, properties, events, and supported indexers are generated automatically.
+        /// </summary>
+        /// <param name="interfaceType">Interface contract to implement.</param>
+        /// <param name="configure">Optional contract member configuration.</param>
+        /// <param name="registerInDi">True to register the interface in DI.</param>
+        /// <returns>The same class plan builder.</returns>
+        public DynaBeeGeneratedClassPlanBuilder ImplementInterface(
+            Type interfaceType,
+            Action<BeeInterfaceContractBuilder> configure = null,
+            bool registerInDi = true)
+        {
+            if (interfaceType == null)
+                throw new ArgumentNullException(nameof(interfaceType));
+
+            if (!interfaceType.IsInterface)
+                throw new ArgumentException("The provided type must be an interface.", nameof(interfaceType));
+
+            _interfaces.Add(interfaceType);
+            foreach (var property in interfaceType.GetProperties())
+                _members.Add(new DynaBeeGeneratedMemberPlan(property.Name, ElementType.Property, property.PropertyType, property.GetIndexParameters().Select(x => x.ParameterType).ToArray()));
+            foreach (var method in interfaceType.GetMethods().Where(x => !x.IsSpecialName))
+                _members.Add(new DynaBeeGeneratedMemberPlan(method.Name, ElementType.Method, method.ReturnType, method.GetParameters().Select(x => x.ParameterType).ToArray()));
+
+            _operations.Add(type => type.ImplementInterface(interfaceType, configure, registerInDi));
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a reflected generic interface contract whose members are generated automatically.
+        /// </summary>
+        /// <typeparam name="TInterface">Interface contract to implement.</typeparam>
+        /// <param name="configure">Optional contract member configuration.</param>
+        /// <param name="registerInDi">True to register the interface in DI.</param>
+        /// <returns>The same class plan builder.</returns>
+        public DynaBeeGeneratedClassPlanBuilder ImplementInterface<TInterface>(
+            Action<BeeInterfaceContractBuilder> configure = null,
+            bool registerInDi = true)
+            => ImplementInterface(typeof(TInterface), configure, registerInDi);
+
+        /// <summary>
         /// Adds a service registration type to the planned generated type.
         /// </summary>
         /// <param name="serviceType">Service type.</param>
