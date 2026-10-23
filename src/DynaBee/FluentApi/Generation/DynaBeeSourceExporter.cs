@@ -116,7 +116,12 @@ namespace DynaBee.FluentApi.Generation
             {
                 var name = type.GetGenericTypeDefinition().FullName!;
                 name = name[..name.IndexOf('`')].Replace('+', '.');
-                return $"global::{name}<{string.Join(", ", type.GetGenericArguments().Select(FormatType))}>";
+                var arguments = type.GetGenericArguments();
+                var formattedArguments = new string[arguments.Length];
+                for (var i = 0; i < arguments.Length; i++)
+                    formattedArguments[i] = FormatType(arguments[i]);
+
+                return $"global::{name}<{string.Join(", ", formattedArguments)}>";
             }
 
             return $"global::{(type.FullName ?? type.Name).Replace('+', '.')}";

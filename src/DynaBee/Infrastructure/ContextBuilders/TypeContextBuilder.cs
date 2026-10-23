@@ -81,7 +81,7 @@
                 .ToArray();
 
             var elementContexts = orderedBuilders.Select(x => x.Build()).ToArray();
-            var clrType = TypeBuilder.CreateTypeInfo()?.AsType() ?? (Type)TypeBuilder;
+            var clrType = TypeBuilder.CreateTypeInfo().AsType();
             return new TypeContext(Name, clrType, elementContexts, _metadata);
         }
 
