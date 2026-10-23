@@ -33,7 +33,7 @@ public static class DynaBeeDiagnosticAssertions
 
         var errors = diagnostics.Where(x => x.Severity == DynaBeeTestDiagnosticSeverity.Error).ToArray();
         if (errors.Length != 0)
-            throw new InvalidOperationException("Expected no DynaBee errors, but found: " + string.Join(Environment.NewLine, errors));
+            throw new InvalidOperationException("Expected no DynaBee errors, but found: " + string.Join(Environment.NewLine, errors.Select(x => x.ToString())));
     }
 
     /// <summary>
@@ -47,7 +47,7 @@ public static class DynaBeeDiagnosticAssertions
 
         var warnings = diagnostics.Where(x => x.Severity == DynaBeeTestDiagnosticSeverity.Warning).ToArray();
         if (warnings.Length != 0)
-            throw new InvalidOperationException("Expected no DynaBee warnings, but found: " + string.Join(Environment.NewLine, warnings));
+            throw new InvalidOperationException("Expected no DynaBee warnings, but found: " + string.Join(Environment.NewLine, warnings.Select(x => x.ToString())));
     }
 }
 
