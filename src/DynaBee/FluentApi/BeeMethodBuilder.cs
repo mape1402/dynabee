@@ -21,6 +21,7 @@ namespace DynaBee.FluentApi
         private Delegate _lambdaBody;
         private LambdaExpression _expressionBody;
         private bool _isStatic;
+        private bool _isSpecialName;
         private MethodAccessModifier _accessModifier;
         private MethodInfo _overrideMethod;
         private MethodInfo _interfaceMethod;
@@ -109,6 +110,12 @@ namespace DynaBee.FluentApi
         internal BeeMethodBuilder Overrides(MethodInfo baseMethod)
         {
             _overrideMethod = baseMethod ?? throw new ArgumentNullException(nameof(baseMethod));
+            return this;
+        }
+
+        internal BeeMethodBuilder AsSpecialName()
+        {
+            _isSpecialName = true;
             return this;
         }
 
@@ -273,6 +280,6 @@ namespace DynaBee.FluentApi
             => WithMetadata(key.Name, value);
 
         internal MethodConfigurator ToConfigurator()
-            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _methodBody, _lambdaBody, _expressionBody, _isStatic, _accessModifier, _attributes, _metadata, _overrideMethod, _interfaceMethod, _genericParameters);
+            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _methodBody, _lambdaBody, _expressionBody, _isStatic, _isSpecialName, _accessModifier, _attributes, _metadata, _overrideMethod, _interfaceMethod, _genericParameters);
     }
 }

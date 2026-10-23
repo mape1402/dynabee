@@ -17,6 +17,7 @@ namespace DynaBee.Infrastructure.Configurators
         private readonly Delegate _lambdaBody;
         private readonly LambdaExpression _expressionBody;
         private readonly bool _isStatic;
+        private readonly bool _isSpecialName;
         private readonly MethodAccessModifier _accessModifier;
         private readonly IReadOnlyCollection<BeeAttribute> _attributes;
         private readonly IReadOnlyDictionary<string, object> _metadata;
@@ -33,6 +34,7 @@ namespace DynaBee.Infrastructure.Configurators
             Delegate lambdaBody,
             LambdaExpression expressionBody,
             bool isStatic,
+            bool isSpecialName,
             MethodAccessModifier accessModifier,
             IReadOnlyCollection<BeeAttribute> attributes,
             IReadOnlyDictionary<string, object> metadata = null,
@@ -48,6 +50,7 @@ namespace DynaBee.Infrastructure.Configurators
             _lambdaBody = lambdaBody;
             _expressionBody = expressionBody;
             _isStatic = isStatic;
+            _isSpecialName = isSpecialName;
             _accessModifier = accessModifier;
             _attributes = attributes ?? Array.Empty<BeeAttribute>();
             _metadata = metadata ?? new Dictionary<string, object>();
@@ -68,6 +71,8 @@ namespace DynaBee.Infrastructure.Configurators
         {
             var access = ResolveAccessModifier();
             var attributes = access.Attributes | MethodAttributes.HideBySig;
+            if (_isSpecialName)
+                attributes |= MethodAttributes.SpecialName;
             if (_isStatic)
             {
                 attributes |= MethodAttributes.Static;
