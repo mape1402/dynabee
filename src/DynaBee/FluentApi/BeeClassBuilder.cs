@@ -293,8 +293,7 @@ namespace DynaBee.FluentApi
         {
             var methodBuilder = new BeeMethodBuilder(name, returnType);
             configure?.Invoke(methodBuilder);
-            _classConfigurator.AddElementBuilder(methodBuilder.ToConfigurator());
-            return this;
+            return AddConfiguredMethod(methodBuilder);
         }
 
         /// <summary>
@@ -420,7 +419,12 @@ namespace DynaBee.FluentApi
                 .ImplementsInterfaceMember(interfaceMethod);
 
             configure?.Invoke(methodBuilder);
-            _classConfigurator.AddElementBuilder(methodBuilder.ToConfigurator());
+            return AddConfiguredMethod(methodBuilder);
+        }
+
+        internal BeeClassBuilder AddConfiguredMethod(BeeMethodBuilder methodBuilder)
+        {
+            _classConfigurator.AddElementBuilder((methodBuilder ?? throw new ArgumentNullException(nameof(methodBuilder))).ToConfigurator());
             return this;
         }
 
