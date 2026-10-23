@@ -14,6 +14,7 @@ namespace DynaBee.FluentApi
     {
         private readonly List<(string Name, BeeType Type)> _parameters = new();
         private readonly List<BeeAttribute> _attributes = new();
+        private readonly List<BeeGenericTypeParameterBuilder> _genericParameters = new();
         private readonly Dictionary<string, object> _metadata = new();
         private Action<ILGenerator> _body;
         private Action<IBeeMethodBodyBuilder> _methodBody;
@@ -57,6 +58,26 @@ namespace DynaBee.FluentApi
         /// </summary>
         public BeeMethodBuilder WithParameter<TParameter>(string name)
             => WithParameter(name, typeof(TParameter));
+
+        /// <summary>
+        /// Declares a generic parameter for this generated method.
+        /// </summary>
+        /// <param name="name">Generic parameter name.</param>
+        /// <param name="configure">Optional constraint configuration.</param>
+        /// <returns>The same method builder.</returns>
+        public BeeMethodBuilder WithTypeParameter(string name, Action<BeeGenericTypeParameterBuilder> configure = null)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException(nameof(name));
+
+            if (_genericParameters.Any(x => string.Equals(x.Name, name, StringComparison.Ordinal)))
+                throw new InvalidOperationException($"Generic method parameter '{name}' is already declared.");
+
+            var parameter = new BeeGenericTypeParameterBuilder(name);
+            configure?.Invoke(parameter);
+            _genericParameters.Add(parameter);
+            return this;
+        }
 
         /// <summary>
         /// Marks this method as static.
@@ -252,6 +273,6 @@ namespace DynaBee.FluentApi
             => WithMetadata(key.Name, value);
 
         internal MethodConfigurator ToConfigurator()
-            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _methodBody, _lambdaBody, _expressionBody, _isStatic, _accessModifier, _attributes, _metadata, _overrideMethod, _interfaceMethod);
+            => new MethodConfigurator(Name, ReturnType, _parameters, _body, _methodBody, _lambdaBody, _expressionBody, _isStatic, _accessModifier, _attributes, _metadata, _overrideMethod, _interfaceMethod, _genericParameters);
     }
 }

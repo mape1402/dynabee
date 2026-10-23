@@ -1,7 +1,9 @@
 namespace DynaBee.Infrastructure.Configurators
 {
+    using DynaBee.FluentApi;
     using DynaBee.FluentApi.DependencyInjection;
     using DynaBee.Infrastructure;
+    using DynaBee.Infrastructure.ContextBuilders;
 
     /// <summary>
     /// <inheritdoc/>
@@ -14,6 +16,7 @@ namespace DynaBee.Infrastructure.Configurators
         private readonly Dictionary<Type, bool> _serviceRegistrations = new();
         private readonly List<BeeAttribute> _attributes = new();
         private readonly Dictionary<string, object> _metadata = new();
+        private readonly List<BeeGenericTypeParameterBuilder> _genericParameters = new();
         private readonly ClassArguments _arguments = new();
         private Type _parentType;
         private bool _registerAsConcrete = true;
@@ -54,6 +57,16 @@ namespace DynaBee.Infrastructure.Configurators
                 typeBuilder.SetCustomAttribute(attribute.Build());
 
             var typeBuilderContext = assemblyContextBuilder.AddTypeBuilder(_arguments.Name, typeBuilder);
+            if (_genericParameters.Count != 0)
+            {
+                var genericBuilders = typeBuilder.DefineGenericParameters(_genericParameters.Select(x => x.Name).ToArray());
+                for (var i = 0; i < genericBuilders.Length; i++)
+                {
+                    var definition = _genericParameters[i];
+                    definition.Apply(genericBuilders[i]);
+                    ((TypeContextBuilder)typeBuilderContext).RegisterGenericParameter(definition.Name, genericBuilders[i]);
+                }
+            }
             foreach (var metadata in _metadata)
                 typeBuilderContext.SetMetadata(metadata.Key, metadata.Value);
 
@@ -139,6 +152,14 @@ namespace DynaBee.Infrastructure.Configurators
 
             _attributes.Add(attribute);
             return this;
+        }
+
+        internal void AddGenericParameter(BeeGenericTypeParameterBuilder parameter)
+        {
+            if (parameter == null)
+                throw new ArgumentNullException(nameof(parameter));
+
+            _genericParameters.Add(parameter);
         }
     }
 }

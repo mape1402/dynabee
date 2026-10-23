@@ -120,11 +120,6 @@ namespace DynaBee.Infrastructure.Configurators
         }
 
         private static Type ResolveType(BeeType beeType, ITypeContextBuilder typeContextBuilder)
-        {
-            if (!beeType.IsReference)
-                return beeType;
-
-            return typeContextBuilder.AssemblyBuilderContext.GetTypeBuilder((string)beeType).TypeBuilder;
-        }
+            => beeType.Resolve(typeContextBuilder);
     }
 }

@@ -56,7 +56,7 @@
         {
             var typeBuilder = typeContextBuilder.TypeBuilder;
 
-            var type = _beeType.IsReference ? typeContextBuilder.AssemblyBuilderContext.GetTypeBuilder(_beeType).TypeBuilder : _beeType;
+            var type = _beeType.Resolve(typeContextBuilder);
 
             var fieldAccess = _fieldAccessModifier.IsDefault ? FieldAccessModifier.Private : _fieldAccessModifier;
             var fieldBuilder = typeBuilder.DefineField($"_{_name}", type, fieldAccess.Attributes);

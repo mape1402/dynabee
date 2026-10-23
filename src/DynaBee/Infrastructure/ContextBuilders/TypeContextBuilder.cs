@@ -14,6 +14,7 @@
         private readonly Dictionary<string, FieldInfo> _fields = new(StringComparer.Ordinal);
         private readonly Dictionary<string, DynamicPropertyAccessor> _properties = new(StringComparer.Ordinal);
         private readonly Dictionary<DynamicMethodKey, MethodInfo> _methods = new();
+        private readonly Dictionary<string, Type> _genericParameters = new(StringComparer.Ordinal);
 
         public TypeContextBuilder(string name, TypeBuilder typeBuilder, IAssemblyContextBuilder assemblyBuilderContext)
         {
@@ -107,6 +108,14 @@
 
         internal bool TryGetMethod(string name, IReadOnlyList<Type> parameterTypes, out MethodInfo method)
             => _methods.TryGetValue(new DynamicMethodKey(name, parameterTypes), out method);
+
+        internal void RegisterGenericParameter(string name, Type parameter)
+        {
+            _genericParameters.Add(name, parameter ?? throw new ArgumentNullException(nameof(parameter)));
+        }
+
+        internal bool TryGetGenericParameter(string name, out Type parameter)
+            => _genericParameters.TryGetValue(name, out parameter);
 
         private static int GetBuildOrder(IElementContextBuilder builder)
         {

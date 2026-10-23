@@ -1,6 +1,7 @@
 namespace DynaBee.Infrastructure.Configurators
 {
     using DynaBee.FluentApi.Body;
+    using DynaBee.FluentApi;
     using DynaBee.Infrastructure.ContextBuilders;
     using System.Linq.Expressions;
     using System.Reflection;
@@ -21,6 +22,7 @@ namespace DynaBee.Infrastructure.Configurators
         private readonly IReadOnlyDictionary<string, object> _metadata;
         private readonly MethodInfo _overrideMethod;
         private readonly MethodInfo _interfaceMethod;
+        private readonly IReadOnlyList<BeeGenericTypeParameterBuilder> _genericParameters;
 
         public MethodConfigurator(
             string name,
@@ -35,7 +37,8 @@ namespace DynaBee.Infrastructure.Configurators
             IReadOnlyCollection<BeeAttribute> attributes,
             IReadOnlyDictionary<string, object> metadata = null,
             MethodInfo overrideMethod = null,
-            MethodInfo interfaceMethod = null)
+            MethodInfo interfaceMethod = null,
+            IReadOnlyList<BeeGenericTypeParameterBuilder> genericParameters = null)
         {
             _name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException(nameof(name)) : name;
             _returnType = returnType;
@@ -50,6 +53,7 @@ namespace DynaBee.Infrastructure.Configurators
             _metadata = metadata ?? new Dictionary<string, object>();
             _overrideMethod = overrideMethod;
             _interfaceMethod = interfaceMethod;
+            _genericParameters = genericParameters ?? Array.Empty<BeeGenericTypeParameterBuilder>();
         }
 
         public void Configure(ITypeContextBuilder typeContextBuilder)
@@ -62,11 +66,6 @@ namespace DynaBee.Infrastructure.Configurators
 
         private void BuildAction(ITypeContextBuilder typeContextBuilder)
         {
-            var returnType = ResolveType(_returnType, typeContextBuilder);
-            var parameterTypes = _parameters.Select(x => ResolveType(x.Type, typeContextBuilder)).ToArray();
-            ValidateOverride(typeContextBuilder, returnType, parameterTypes);
-            ValidateInterfaceImplementation(returnType, parameterTypes);
-
             var access = ResolveAccessModifier();
             var attributes = access.Attributes | MethodAttributes.HideBySig;
             if (_isStatic)
@@ -82,7 +81,37 @@ namespace DynaBee.Infrastructure.Configurators
                 attributes |= MethodAttributes.Virtual | MethodAttributes.Final | MethodAttributes.NewSlot;
             }
 
-            var methodBuilder = typeContextBuilder.TypeBuilder.DefineMethod(_name, attributes, returnType, parameterTypes);
+            MethodBuilder methodBuilder;
+            Dictionary<string, Type> methodGenericParameters = null;
+            Type returnType;
+            Type[] parameterTypes;
+            if (_genericParameters.Count == 0)
+            {
+                returnType = ResolveType(_returnType, typeContextBuilder, null);
+                parameterTypes = _parameters.Select(x => ResolveType(x.Type, typeContextBuilder, null)).ToArray();
+                methodBuilder = typeContextBuilder.TypeBuilder.DefineMethod(_name, attributes, returnType, parameterTypes);
+            }
+            else
+            {
+                if (_overrideMethod != null || _interfaceMethod != null)
+                    throw new InvalidOperationException("Generic methods cannot be used for overrides or reflected interface contract members.");
+
+                methodBuilder = typeContextBuilder.TypeBuilder.DefineMethod(_name, attributes);
+                var builders = methodBuilder.DefineGenericParameters(_genericParameters.Select(x => x.Name).ToArray());
+                methodGenericParameters = builders
+                    .Select((builder, index) => (builder, index))
+                    .ToDictionary(x => _genericParameters[x.index].Name, x => (Type)x.builder, StringComparer.Ordinal);
+                for (var i = 0; i < builders.Length; i++)
+                    _genericParameters[i].Apply(builders[i]);
+
+                returnType = ResolveType(_returnType, typeContextBuilder, methodGenericParameters);
+                parameterTypes = _parameters.Select(x => ResolveType(x.Type, typeContextBuilder, methodGenericParameters)).ToArray();
+                methodBuilder.SetReturnType(returnType);
+                methodBuilder.SetParameters(parameterTypes);
+            }
+
+            ValidateOverride(typeContextBuilder, returnType, parameterTypes);
+            ValidateInterfaceImplementation(returnType, parameterTypes);
             if (_overrideMethod != null)
                 typeContextBuilder.TypeBuilder.DefineMethodOverride(methodBuilder, _overrideMethod);
             if (_interfaceMethod != null)
@@ -307,15 +336,18 @@ namespace DynaBee.Infrastructure.Configurators
             il.Emit(OpCodes.Ret);
         }
 
-        private static Type ResolveType(BeeType beeType, ITypeContextBuilder typeContextBuilder)
+        private static Type ResolveType(
+            BeeType beeType,
+            ITypeContextBuilder typeContextBuilder,
+            IReadOnlyDictionary<string, Type> methodGenericParameters)
         {
-            if (!beeType.IsReference)
-                return beeType;
+            if (beeType.IsGenericParameter && methodGenericParameters != null &&
+                methodGenericParameters.TryGetValue(beeType.GenericParameterName, out var genericParameter))
+            {
+                return genericParameter;
+            }
 
-            if (typeContextBuilder == null)
-                throw new InvalidOperationException("A reference BeeType requires a type context builder.");
-
-            return typeContextBuilder.AssemblyBuilderContext.GetTypeBuilder((string)beeType).TypeBuilder;
+            return beeType.Resolve(typeContextBuilder);
         }
     }
 }
