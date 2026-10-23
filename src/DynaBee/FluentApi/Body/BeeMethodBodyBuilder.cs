@@ -370,9 +370,10 @@ namespace DynaBee.FluentApi.Body
             if (_baseMethod.IsAbstract)
                 throw new InvalidOperationException($"Base method '{_baseMethod}' is abstract and cannot be called.");
 
-            var argumentExpressions = (arguments ?? Array.Empty<IBeeValueExpression>())
-                .Select(RequireExpression)
-                .ToArray();
+            var suppliedArguments = arguments ?? Array.Empty<IBeeValueExpression>();
+            var argumentExpressions = new BeeValueExpression[suppliedArguments.Length];
+            for (var i = 0; i < suppliedArguments.Length; i++)
+                argumentExpressions[i] = RequireExpression(suppliedArguments[i]);
             ValidateCallArguments(_baseMethod, argumentExpressions);
             return new BeeBaseMethodCallExpression(RequireExpression(Self()), _baseMethod, argumentExpressions);
         }
@@ -598,9 +599,11 @@ namespace DynaBee.FluentApi.Body
             if (values == null || values.Length == 0)
                 return Constant(string.Empty, typeof(string));
 
-            return values
-                .Select(RequireExpression)
-                .Aggregate((BeeValueExpression)new BeeConstantExpression(string.Empty, typeof(string)), (left, right) => new BeeConcatExpression(left, right));
+            BeeValueExpression result = new BeeConstantExpression(string.Empty, typeof(string));
+            foreach (var value in values)
+                result = new BeeConcatExpression(result, RequireExpression(value));
+
+            return result;
         }
 
         public IBeeValueExpression If(IBeeValueExpression condition, IBeeValueExpression whenTrue, IBeeValueExpression whenFalse)
@@ -907,9 +910,10 @@ namespace DynaBee.FluentApi.Body
         {
             ValidateMethod(method, isStaticCall);
 
-            var argumentExpressions = (arguments ?? Array.Empty<IBeeValueExpression>())
-                .Select(RequireExpression)
-                .ToArray();
+            var suppliedArguments = arguments ?? Array.Empty<IBeeValueExpression>();
+            var argumentExpressions = new BeeValueExpression[suppliedArguments.Length];
+            for (var i = 0; i < suppliedArguments.Length; i++)
+                argumentExpressions[i] = RequireExpression(suppliedArguments[i]);
 
             ValidateCallTarget(instance, method, isStaticCall);
             ValidateCallArguments(method, argumentExpressions, knownParameterTypes);

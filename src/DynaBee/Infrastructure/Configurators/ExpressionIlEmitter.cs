@@ -115,12 +115,7 @@ namespace DynaBee.Infrastructure.Configurators
             {
                 EmitExpression(expression.Left, context);
                 EmitExpression(expression.Right, context);
-
-                var opcode = expression.Method.IsVirtual && !expression.Method.IsFinal && !expression.Method.DeclaringType!.IsValueType
-                    ? OpCodes.Callvirt
-                    : OpCodes.Call;
-
-                context.Il.Emit(opcode, expression.Method);
+                context.Il.Emit(OpCodes.Call, expression.Method);
                 return;
             }
 
