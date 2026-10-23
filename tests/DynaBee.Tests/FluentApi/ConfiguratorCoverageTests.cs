@@ -1,5 +1,6 @@
 namespace DynaBee.Tests.FluentApi;
 
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 using DynaBee.FluentApi;
@@ -158,6 +159,108 @@ public sealed class ConfiguratorCoverageTests
             CreateMethodConfigurator(interfaceMethod: interfaceMethod, access: MethodAccessModifier.Protected)));
     }
 
+    [Fact]
+    public void PropertyOverrides_Emit_Default_Bodies_For_Void_And_Reference_Accessors()
+    {
+        var number = typeof(OverrideBase).GetProperty(nameof(OverrideBase.Number))!;
+        var text = typeof(OverrideBase).GetProperty(nameof(OverrideBase.DefaultText))!;
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("DefaultOverrides", type => type
+                .Inherits<OverrideBase>()
+                .OverrideProperty(number, property => property.Setter(_ => { }))
+                .OverrideProperty(text, property => property.Getter(_ => { })))
+            .Build();
+
+        var instance = (OverrideBase)context.CreateInstance("DefaultOverrides");
+        instance.Number = 42;
+
+        Assert.Equal(0, instance.Number);
+        Assert.Null(instance.DefaultText);
+    }
+
+    [Fact]
+    public void Interface_Properties_And_Clr_Operators_Expose_All_Configured_Shapes()
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddInterface("ISetterOnly", type => type
+                .AddProperty<int>("Value", property => property
+                    .AsWriteOnly()
+                    .WithSetterAccess(MethodAccessModifier.Internal)))
+            .AddClass("Operators", type =>
+            {
+                foreach (var kind in Enum.GetValues<BeeOperatorKind>())
+                {
+                    type.AddOperator(kind, typeof(int), method => method
+                        .WithParameter<int>("value")
+                        .EmitsBody(body => body.Return(body.Parameter<int>("value"))));
+                }
+            })
+            .Build();
+
+        var property = context.GetClrType("ISetterOnly").GetProperty("Value", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var setter = property.GetSetMethod(true)!;
+        var operators = context.GetClrType("Operators");
+
+        Assert.True(setter.IsAssembly);
+        Assert.Null(property.GetGetMethod(true));
+        Assert.NotNull(operators.GetMethod("op_Addition"));
+        Assert.NotNull(operators.GetMethod("op_Subtraction"));
+        Assert.NotNull(operators.GetMethod("op_Multiply"));
+        Assert.NotNull(operators.GetMethod("op_Division"));
+        Assert.NotNull(operators.GetMethod("op_Equality"));
+        Assert.NotNull(operators.GetMethod("op_Inequality"));
+        Assert.NotNull(operators.GetMethod("op_Implicit"));
+        Assert.NotNull(operators.GetMethod("op_Explicit"));
+    }
+
+    [Fact]
+    public void Expression_Configurator_Emits_Identity_Conversions()
+    {
+        var number = Expression.Parameter(typeof(int), "value");
+        var identity = Expression.Lambda<Func<int, int>>(Expression.Convert(number, typeof(int)), number);
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Conversions", type => type
+                .AddMethod("Identity", typeof(int), method => method
+                    .WithParameter<int>("value")
+                    .EmitsExpression(identity)))
+            .Build();
+
+        var instance = context.CreateInstance("Conversions");
+        var type = instance.GetType();
+
+        Assert.Equal(7, type.GetMethod("Identity")!.Invoke(instance, new object[] { 7 }));
+    }
+
+    [Fact]
+    public void ConstructorConfigurator_Rejects_Invalid_Base_Constructor_Forwarding()
+    {
+        var textConstructor = typeof(ConstructorBaseText).GetConstructor(new[] { typeof(string) })!;
+        var intConstructor = typeof(ConstructorBaseInt).GetConstructor(new[] { typeof(int) })!;
+        var noParameters = Array.Empty<(string Name, BeeType Type)>();
+
+        Assert.Throws<ArgumentNullException>(() => new ConstructorConfigurator(noParameters, null).Configure(null!));
+        Assert.Throws<InvalidOperationException>(() => ConfigureConstructor(
+            new ConstructorConfigurator(noParameters, null, baseConstructor: textConstructor),
+            typeof(object)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureConstructor(
+            new ConstructorConfigurator(noParameters, null, baseConstructor: textConstructor, baseConstructorArgumentNames: Array.Empty<string>()),
+            typeof(ConstructorBaseText)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureConstructor(
+            new ConstructorConfigurator(
+                new[] { ("value", (BeeType)typeof(string)) },
+                null,
+                baseConstructor: intConstructor,
+                baseConstructorArgumentNames: new[] { "value" }),
+            typeof(ConstructorBaseInt)));
+        Assert.Throws<InvalidOperationException>(() => ConfigureConstructor(
+            new ConstructorConfigurator(
+                new[] { ("other", (BeeType)typeof(string)) },
+                null,
+                baseConstructor: textConstructor,
+                baseConstructorArgumentNames: new[] { "missing" }),
+            typeof(ConstructorBaseText)));
+    }
+
     private static void BuildInvalid(Action<BeeClassBuilder> configure)
         => new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("Invalid", type =>
@@ -204,6 +307,18 @@ public sealed class ConfiguratorCoverageTests
         typeContext.Build();
     }
 
+    private static void ConfigureConstructor(ConstructorConfigurator configurator, Type baseType)
+    {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(NewAssemblyName()), AssemblyBuilderAccess.Run);
+        var module = assembly.DefineDynamicModule("Constructors");
+        var assemblyContext = new AssemblyContextBuilder("Constructors", assembly, module);
+        var type = module.DefineType("Generated", TypeAttributes.Public, baseType);
+        var typeContext = (TypeContextBuilder)assemblyContext.AddTypeBuilder("Generated", type);
+
+        configurator.Configure(typeContext);
+        typeContext.Build();
+    }
+
     private static string NewAssemblyName()
         => $"DynaBee.Tests.Configurators.{Guid.NewGuid():N}";
 
@@ -214,6 +329,8 @@ public sealed class ConfiguratorCoverageTests
         public virtual string Text { get; set; }
 
         public virtual int DefaultNumber { get; }
+
+        public virtual string DefaultText => "base";
 
         public int NonVirtual { get; set; }
 
@@ -249,6 +366,20 @@ public sealed class ConfiguratorCoverageTests
 
         protected virtual int ProtectedTransform(int value)
             => value;
+    }
+
+    public sealed class ConstructorBaseText
+    {
+        public ConstructorBaseText(string value)
+        {
+        }
+    }
+
+    public sealed class ConstructorBaseInt
+    {
+        public ConstructorBaseInt(int value)
+        {
+        }
     }
 
     public interface IValidationContract
