@@ -6,6 +6,95 @@ Comprehensive API documentation for **DynaBee** in Microsoft-style format.
 
 1. [Namespace Index](#namespace-index)
 2. [Namespace Details](#namespace-details)
+3. [Platform Additions](#platform-additions)
+
+## Platform Additions
+
+The APIs below extend the reference with the platform-generation surface.
+
+| Namespace | Component | Purpose |
+|---|---|---|
+| `DynaBee` | `IAssemblyContextLease` | Releases DynaBee's reference to a collectible generated context. |
+| `DynaBee.FluentApi` | `BeeInterfaceContractBuilder` | Configures reflected interface methods and properties. |
+| `DynaBee.FluentApi` | `BeeMethodInterceptionBuilder` | Wraps an override with before, after, and finally bodies. |
+| `DynaBee.FluentApi` | `BeeGenericClassBuilder`, `BeeGenericTypeParameterBuilder` | Builds generic runtime types and constraints. |
+| `DynaBee.FluentApi` | `BeeEventBuilder`, `BeeIndexerBuilder`, `BeeOperatorKind` | Configures events, indexers, and CLR operators. |
+| `DynaBee.FluentApi.Body` | `IBeeExceptionBuilder`, `IBeeSwitchBuilder` | Configures exception and switch statements in `EmitsBody(...)`. |
+| `DynaBee.FluentApi.Generation` | `DynaBeePlanDiagnostic`, `DynaBeePlanValidationResult`, `DynaBeePlanValidationException` | Reports declarative plan validation findings. |
+| `DynaBee.FluentApi.Generation` | `IDynaBeeGenerationPlanExecutor`, `IDynaBeeGenerationPlanCache`, `DynaBeeGenerationServiceCollectionExtensions` | Builds and caches plans through DI. |
+| `DynaBee.FluentApi.Generation` | `DynaBeeSourceExporter`, `DynaBeeSourceExportResult`, `DynaBeeSourceMapEntry` | Exports deterministic C# shape snapshots. |
+| `DynaBee.FluentApi.Extensions` | `IDynaBeeGenerationExtension`, `DynaBeeGenerationExtension`, `DynaBeeExtensionValidationContext` | Extends validation and generation without coupling framework behavior to DynaBee core. |
+| `DynaBee.FluentApi.Extensions` | `IDynaBeeMetadataSchema`, `DynaBeeMetadataSchema<T>` | Defines typed metadata rules for plan and generated-type metadata. |
+
+### `DynaBeeGenerationPlan`
+
+| Member | Return type | Description |
+|---|---|---|
+| `Validate()` | `DynaBeePlanValidationResult` | Validates the declarative shape before IL emission. |
+| `GetFingerprint()` | `string` | Returns a stable SHA-256 key for declarative plan caching. |
+| `ExportSource()` | `DynaBeeSourceExportResult` | Produces deterministic C# shape source and source maps. |
+
+```csharp
+var validation = plan.Validate();
+validation.ThrowIfErrors();
+var source = plan.ExportSource();
+```
+
+### `BeeClassBuilder`
+
+| Member | Return type | Description |
+|---|---|---|
+| `ImplementInterface<TInterface>(...)` | `BeeClassBuilder` | Generates interface properties and methods, with optional explicit coverage enforcement. |
+| `Intercept(MethodInfo, ...)` | `BeeClassBuilder` | Emits a base override with interceptor stages. |
+| `AddEvent<THandler>(...)` | `BeeClassBuilder` | Adds a delegate-backed event. |
+| `AddIndexer<TIndex, TValue>(...)` | `BeeClassBuilder` | Adds a dictionary-backed indexer. |
+| `AddOperator(...)` | `BeeClassBuilder` | Adds a CLR operator or conversion method. |
+
+```csharp
+type.Intercept(baseMethod, interceptor => interceptor
+    .Before(body => { })
+    .Finally(body => { }));
+```
+
+### `IBeeMethodBodyBuilder`
+
+| Member | Return type | Description |
+|---|---|---|
+| `CallBase(...)` | `IBeeValueExpression` | Calls the overridden base method without virtual redispatch. |
+| `While(...)`, `Break()`, `Continue()` | `IBeeMethodBodyBuilder` | Emits loop control flow. |
+| `Switch(...)` | `IBeeMethodBodyBuilder` | Emits constant switch branches. |
+| `Try(...)`, `Using(...)`, `Throw(...)` | `IBeeMethodBodyBuilder` | Emits protected regions, deterministic disposal, and throw statements. |
+
+```csharp
+body.Try(
+    tryBody => tryBody.Throw(tryBody.New<InvalidOperationException>()),
+    catches => catches.Catch<InvalidOperationException>("error", (error, catchBody) =>
+        catchBody.Return(catchBody.Constant(-1))));
+```
+
+### DI Extensions
+
+| Extension method | Description |
+|---|---|
+| `AddDynaBeeGeneration()` | Registers the plan executor and cache. |
+| `AddDynaBeeExtension<TExtension>()` | Registers an extension lifecycle participant. |
+| `AddDynaBeeMetadataSchema(...)` | Registers typed metadata validation. |
+| `AddDynaBeeExtensionsFromAssemblies(...)` | Discovers extension implementations from supplied assemblies. |
+
+```csharp
+services
+    .AddDynaBeeGeneration()
+    .AddDynaBeeExtension<MyGenerationExtension>();
+```
+
+### `DynaBee.Testing` Additions
+
+| Assertion | Description |
+|---|---|
+| `ShouldHaveMethod(...)` | Verifies an exact generated method signature. |
+| `ShouldHaveProperty(...)` | Verifies a generated property and its type. |
+| `ShouldHaveNoErrors()` / `ShouldHaveNoWarnings()` | Verifies diagnostic severity. |
+| `ShouldMatchSource(...)` | Verifies a named generated source snapshot. |
 
 ## Namespace Index
 

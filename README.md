@@ -17,6 +17,8 @@ The recommended application model is DI-first: define `DynaBeeProfile` classes, 
 - Selective DI registration as concrete types, interfaces, or arbitrary assignable service/base types.
 - Typed metadata for external extensions (for example EF or other frameworks).
 - Assembly cache/versioning to reduce type build overhead.
+- Contract-first interface implementation, generic generated types/methods, events, indexers, and CLR operators.
+- Validated generation plans, DI-managed plan caching, source export, collectible assembly leases, and extension hooks.
 
 ## Requirements
 
@@ -226,6 +228,110 @@ public sealed class NameFormatter
     public string Format(string value) => $"Formatted: {value}";
 }
 ```
+
+## Platform Generation API
+
+For runtime platforms that build declarative descriptors, use the DI-managed
+plan executor. It validates the plan before emission, caches immutable contexts
+by plan fingerprint, and lets extension packages validate or consume metadata.
+
+```csharp
+using DynaBee;
+using DynaBee.FluentApi.Extensions;
+using DynaBee.FluentApi.Generation;
+using Microsoft.Extensions.DependencyInjection;
+
+var plan = new DynaBeeGenerationPlan("Demo.Contracts")
+    .AddClass("Calculator", type => type
+        .ImplementInterface<ICalculator>(contract => contract
+            .RequireExplicitImplementations()
+            .Method(nameof(ICalculator.Sum), method => method
+                .EmitsBody(body => body.Return(body.Add(
+                    body.Parameter<int>("x"),
+                    body.Parameter<int>("y")))))));
+
+var services = new ServiceCollection();
+services.AddDynaBeeGeneration();
+
+var provider = services.BuildServiceProvider();
+var executor = provider.GetRequiredService<IDynaBeeGenerationPlanExecutor>();
+var context = executor.Build(plan);
+
+var calculator = context.CreateInstance<ICalculator>("Calculator");
+Console.WriteLine(calculator.Sum(2, 3)); // 5
+```
+
+`DynaBeeGenerationPlan.Validate()` can be used when a host wants diagnostics
+without generating an assembly. `GetFingerprint()` identifies the declarative
+shape for cache keys. Add metadata that identifies behavior when plans use
+different captured delegates with the same declared type shape.
+
+### Rich Method Bodies and Interception
+
+`EmitsBody(...)` supports `while`, `break`, `continue`, `switch`,
+`try/catch/finally`, `using`, and `throw`, in addition to the existing value
+and assignment expressions. Overrides can safely call their base implementation:
+
+```csharp
+builder.AddClass("TracedCalculator", type => type
+    .Inherits<CalculatorBase>()
+    .Intercept(typeof(CalculatorBase).GetMethod(nameof(CalculatorBase.Sum))!, interceptor => interceptor
+        .Before(body => body.Evaluate(body.StaticCall(typeof(Log), nameof(Log.Start), Array.Empty<Type>())))
+        .After((result, body) => body.Evaluate(body.StaticCall(
+            typeof(Log), nameof(Log.Completed), new[] { typeof(int) }, result)))
+        .Finally(body => body.Evaluate(body.StaticCall(typeof(Log), nameof(Log.Stop), Array.Empty<Type>())))));
+```
+
+`CallBase()` emits a non-virtual base call and therefore never recursively
+re-enters the generated override.
+
+### Generic Types and .NET Members
+
+Generated generic types use named parameters through `BeeType.GenericParameter(...)`:
+
+```csharp
+builder.AddGenericClass("Box", generic => generic
+    .WithTypeParameter("T", parameter => parameter.ReferenceType().HasDefaultConstructor())
+    .AddProperty("Value", generic.TypeParameter("T"))
+    .AddMethod("GetValue", generic.TypeParameter("T"), method => method
+        .EmitsBody(body => body.Return(body.Property(body.Self(), "Value")))));
+```
+
+Classes can also expose delegate events, dictionary-backed indexers, and CLR
+operators through `AddEvent(...)`, `AddIndexer(...)`, and `AddOperator(...)`.
+
+### Extensions and Source Export
+
+Keep framework behavior outside the core package by registering an extension:
+
+```csharp
+services
+    .AddDynaBeeGeneration()
+    .AddDynaBeeExtension<MyFrameworkExtension>()
+    .AddDynaBeeMetadataSchema(new DynaBeeMetadataSchema<string>(
+        new BeeMetadataKey<string>("framework.table"),
+        value => !string.IsNullOrWhiteSpace(value),
+        "A table name is required when framework.table is present."));
+```
+
+Extensions receive validation, pre-build configuration, and post-generation
+callbacks. `plan.ExportSource()` creates deterministic C# shape snapshots and
+source maps for diagnostics, reviews, and source-based build pipelines. The
+exporter intentionally marks runtime delegate or IL bodies as placeholders;
+it does not claim to reverse-engineer arbitrary runtime code.
+
+### Collectible Contexts
+
+For plugin-like or short-lived scenarios, request a collectible assembly and
+release DynaBee's context reference when finished:
+
+```csharp
+using var lease = builder.AsCollectible().BuildLease();
+var context = lease.Context;
+```
+
+The runtime can unload a collectible assembly only after consumers release all
+references to its types, instances, methods, and delegates.
 
 Generated classes can also override virtual or abstract properties:
 
