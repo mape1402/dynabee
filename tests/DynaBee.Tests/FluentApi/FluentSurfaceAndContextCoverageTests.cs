@@ -3,6 +3,7 @@ namespace DynaBee.Tests.FluentApi;
 using System.Reflection;
 using System.Reflection.Emit;
 using DynaBee.FluentApi;
+using DynaBee.FluentApi.Body;
 using DynaBee.FluentApi.Diagnostics;
 using DynaBee.Infrastructure;
 using DynaBee.Infrastructure.Configurators;
@@ -204,6 +205,34 @@ public sealed class FluentSurfaceAndContextCoverageTests
         Assert.Equal("override", context.Find("Override").FindOne(nameof(AttributedOverrideBase.Value)).GetMetadata("source"));
     }
 
+    [Fact]
+    public void Method_Interceptors_Validate_Callbacks_And_Support_All_NonVoid_Combinations()
+    {
+        var baseMethod = typeof(ValueBase).GetMethod(nameof(ValueBase.Calculate))!;
+        var interception = new BeeMethodInterceptionBuilder(baseMethod);
+
+        Assert.Throws<ArgumentNullException>(() => new BeeMethodInterceptionBuilder(null!));
+        Assert.Throws<ArgumentNullException>(() => interception.Before(null!));
+        Assert.Throws<ArgumentNullException>(() => interception.After((Action<IBeeLocal, IBeeMethodBodyBuilder>)null!));
+        Assert.Throws<ArgumentNullException>(() => interception.After((Action<IBeeMethodBodyBuilder>)null!));
+        Assert.Throws<ArgumentNullException>(() => interception.Finally(null!));
+
+        ValueInterceptorRecorder.Reset();
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Plain", type => type.Inherits<ValueBase>().Intercept(baseMethod, _ => { }))
+            .AddClass("BeforeAfter", type => type.Inherits<ValueBase>().Intercept(baseMethod, builder => builder
+                .Before(body => body.Evaluate(body.StaticCall(typeof(ValueInterceptorRecorder), nameof(ValueInterceptorRecorder.Before), Type.EmptyTypes)))
+                .After((_, body) => body.Evaluate(body.StaticCall(typeof(ValueInterceptorRecorder), nameof(ValueInterceptorRecorder.After), Type.EmptyTypes)))))
+            .AddClass("Finally", type => type.Inherits<ValueBase>().Intercept(baseMethod, builder => builder
+                .Finally(body => body.Evaluate(body.StaticCall(typeof(ValueInterceptorRecorder), nameof(ValueInterceptorRecorder.Finally), Type.EmptyTypes)))))
+            .Build();
+
+        Assert.Equal(3, ((ValueBase)context.CreateInstance("Plain")).Calculate(2));
+        Assert.Equal(4, ((ValueBase)context.CreateInstance("BeforeAfter")).Calculate(3));
+        Assert.Equal(5, ((ValueBase)context.CreateInstance("Finally")).Calculate(4));
+        Assert.Equal(new[] { "before", "after", "finally" }, ValueInterceptorRecorder.Events);
+    }
+
     private static string NewAssemblyName()
         => $"DynaBee.Tests.FluentSurfaceContext.{Guid.NewGuid():N}";
 
@@ -233,5 +262,28 @@ public sealed class FluentSurfaceAndContextCoverageTests
     public abstract class AttributedOverrideBase
     {
         public virtual int Value => 1;
+    }
+
+    public class ValueBase
+    {
+        public virtual int Calculate(int value)
+            => value + 1;
+    }
+
+    public static class ValueInterceptorRecorder
+    {
+        public static List<string> Events { get; } = new();
+
+        public static void Reset()
+            => Events.Clear();
+
+        public static void Before()
+            => Events.Add("before");
+
+        public static void After()
+            => Events.Add("after");
+
+        public static void Finally()
+            => Events.Add("finally");
     }
 }
