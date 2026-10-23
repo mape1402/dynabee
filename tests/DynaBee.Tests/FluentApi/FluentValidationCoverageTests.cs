@@ -160,6 +160,27 @@ public sealed class FluentValidationCoverageTests
         Assert.Contains("set:-", members.Single(x => x.Name == "ReadOnly").Signature);
     }
 
+    [Fact]
+    public void Interface_And_Generic_Builders_Validate_Signatures_And_Declared_Parameters()
+    {
+        Assert.Throws<ArgumentException>(() => new BeeInterfaceMethodBuilder(" ", typeof(void)));
+        var method = new BeeInterfaceMethodBuilder("Run", typeof(void));
+        Assert.Throws<ArgumentException>(() => method.WithParameter(" ", typeof(int)));
+        Assert.Throws<ArgumentNullException>(() => method.AddAttribute(null!));
+        Assert.Throws<ArgumentException>(() => new BeeInterfacePropertyBuilder(" ", typeof(int)));
+        Assert.Throws<ArgumentNullException>(() => new BeeInterfacePropertyBuilder("Value", typeof(int)).AddAttribute(null!));
+
+        var owner = new BeeClassBuilder(new ClassConfigurator("Generic", ClassAccessModifier.Public));
+        Assert.Throws<ArgumentNullException>(() => new BeeGenericClassBuilder(null!, new ClassConfigurator("Generic", ClassAccessModifier.Public)));
+        Assert.Throws<ArgumentNullException>(() => new BeeGenericClassBuilder(owner, null!));
+        var generic = new BeeGenericClassBuilder(owner, new ClassConfigurator("GenericTwo", ClassAccessModifier.Public));
+        Assert.Throws<ArgumentException>(() => generic.WithTypeParameter(" "));
+        generic.WithTypeParameter("T");
+        Assert.Throws<InvalidOperationException>(() => generic.WithTypeParameter("T"));
+        Assert.Throws<KeyNotFoundException>(() => generic.TypeParameter("Missing"));
+        Assert.Equal("T", generic.TypeParameter("T").GenericParameterName);
+    }
+
     public interface IContractWithMembers
     {
         int Value { get; set; }
