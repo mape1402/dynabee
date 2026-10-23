@@ -356,7 +356,7 @@ namespace DynaBee.FluentApi.Body
 
             var expression = RequireExpression(instance);
             var method = ResolveInstanceMethod(expression, methodName, parameterTypes);
-            return CreateCallExpression(expression, method, isStaticCall: false, arguments);
+            return CreateCallExpression(expression, method, isStaticCall: false, arguments, parameterTypes);
         }
 
         public IBeeValueExpression CallBase()
@@ -900,7 +900,8 @@ namespace DynaBee.FluentApi.Body
             BeeValueExpression instance,
             MethodInfo method,
             bool isStaticCall,
-            IBeeValueExpression[] arguments)
+            IBeeValueExpression[] arguments,
+            IReadOnlyList<Type> knownParameterTypes = null)
         {
             ValidateMethod(method, isStaticCall);
 
@@ -909,9 +910,9 @@ namespace DynaBee.FluentApi.Body
                 .ToArray();
 
             ValidateCallTarget(instance, method, isStaticCall);
-            ValidateCallArguments(method, argumentExpressions);
+            ValidateCallArguments(method, argumentExpressions, knownParameterTypes);
 
-            return new BeeMethodCallExpression(instance, method, argumentExpressions);
+            return new BeeMethodCallExpression(instance, method, argumentExpressions, knownParameterTypes);
         }
 
         private MethodInfo ResolveInstanceMethod(BeeValueExpression instance, string methodName, IReadOnlyList<Type> parameterTypes)
@@ -1018,13 +1019,25 @@ namespace DynaBee.FluentApi.Body
 
         private static void ValidateMethod(MethodInfo method, bool isStaticCall)
         {
-            if (method.ContainsGenericParameters)
+            if (ContainsOpenGenericParameters(method))
                 throw new InvalidOperationException($"Method '{method}' contains open generic parameters. Supply a closed MethodInfo.");
 
             if (method.IsStatic != isStaticCall)
             {
                 var expected = isStaticCall ? "static" : "instance";
                 throw new InvalidOperationException($"Method '{method}' is not a {expected} method.");
+            }
+        }
+
+        private static bool ContainsOpenGenericParameters(MethodInfo method)
+        {
+            try
+            {
+                return method.ContainsGenericParameters;
+            }
+            catch (NotSupportedException) when (method is MethodBuilder builder)
+            {
+                return builder.IsGenericMethodDefinition;
             }
         }
 
@@ -1043,21 +1056,24 @@ namespace DynaBee.FluentApi.Body
                 throw new InvalidOperationException($"Method '{method}' cannot be called on instance type '{instance.Type}'.");
         }
 
-        private static void ValidateCallArguments(MethodInfo method, IReadOnlyList<BeeValueExpression> arguments)
+        private static void ValidateCallArguments(
+            MethodInfo method,
+            IReadOnlyList<BeeValueExpression> arguments,
+            IReadOnlyList<Type> knownParameterTypes = null)
         {
-            var parameters = method.GetParameters();
-            if (parameters.Length != arguments.Count)
+            var parameterTypes = knownParameterTypes ?? method.GetParameters().Select(x => x.ParameterType).ToArray();
+            if (parameterTypes.Count != arguments.Count)
             {
                 throw new InvalidOperationException(
-                    $"Method '{method}' expects {parameters.Length} argument(s), but {arguments.Count} were provided.");
+                    $"Method '{method}' expects {parameterTypes.Count} argument(s), but {arguments.Count} were provided.");
             }
 
-            for (var i = 0; i < parameters.Length; i++)
+            for (var i = 0; i < parameterTypes.Count; i++)
             {
-                if (!BeeIlConversions.CanConvert(arguments[i].Type, parameters[i].ParameterType))
+                if (!BeeIlConversions.CanConvert(arguments[i].Type, parameterTypes[i]))
                 {
                     throw new InvalidOperationException(
-                        $"Argument {i} for method '{method}' has type '{arguments[i].Type}', which cannot be assigned or converted to '{parameters[i].ParameterType}'.");
+                        $"Argument {i} for method '{method}' has type '{arguments[i].Type}', which cannot be assigned or converted to '{parameterTypes[i]}'.");
                 }
             }
         }
@@ -1655,13 +1671,19 @@ namespace DynaBee.FluentApi.Body
         private readonly BeeValueExpression _instance;
         private readonly MethodInfo _method;
         private readonly BeeValueExpression[] _arguments;
+        private readonly IReadOnlyList<Type> _parameterTypes;
 
-        public BeeMethodCallExpression(BeeValueExpression instance, MethodInfo method, BeeValueExpression[] arguments)
+        public BeeMethodCallExpression(
+            BeeValueExpression instance,
+            MethodInfo method,
+            BeeValueExpression[] arguments,
+            IReadOnlyList<Type> parameterTypes = null)
             : base(method.ReturnType)
         {
             _instance = instance;
             _method = method;
             _arguments = arguments;
+            _parameterTypes = parameterTypes;
         }
 
         public override void EmitLoad(ILGenerator il)
@@ -1669,9 +1691,9 @@ namespace DynaBee.FluentApi.Body
             if (!_method.IsStatic)
                 _instance.EmitLoad(il);
 
-            var parameters = _method.GetParameters();
+            var parameterTypes = _parameterTypes ?? _method.GetParameters().Select(x => x.ParameterType).ToArray();
             for (var i = 0; i < _arguments.Length; i++)
-                BeeMethodBodyBuilder.EmitLoadWithConversion(il, _arguments[i], parameters[i].ParameterType);
+                BeeMethodBodyBuilder.EmitLoadWithConversion(il, _arguments[i], parameterTypes[i]);
 
             il.Emit(ShouldCallVirtual(_method) ? OpCodes.Callvirt : OpCodes.Call, _method);
         }
@@ -2349,11 +2371,20 @@ namespace DynaBee.FluentApi.Body
         }
     }
 
-    internal static class BeeMethodBodyConstantTable
+    /// <summary>
+    /// Stores runtime constant values referenced by generated method bodies.
+    /// This type is public so generated assemblies can resolve non-IL-native constants.
+    /// </summary>
+    public static class BeeMethodBodyConstantTable
     {
         private static readonly ConcurrentDictionary<int, object> Constants = new();
         private static int _nextId;
 
+        /// <summary>
+        /// Registers a constant value and returns its generated identifier.
+        /// </summary>
+        /// <param name="value">The runtime constant to store.</param>
+        /// <returns>An identifier that can be passed to <see cref="Get"/>.</returns>
         public static int Register(object value)
         {
             var id = Interlocked.Increment(ref _nextId);
@@ -2361,6 +2392,11 @@ namespace DynaBee.FluentApi.Body
             return id;
         }
 
+        /// <summary>
+        /// Gets a previously registered constant value.
+        /// </summary>
+        /// <param name="id">The constant identifier.</param>
+        /// <returns>The registered runtime value.</returns>
         public static object Get(int id)
             => Constants[id];
     }
