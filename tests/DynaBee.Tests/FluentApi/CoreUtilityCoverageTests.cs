@@ -81,6 +81,20 @@ public sealed class CoreUtilityCoverageTests
         Assert.False(MethodAccessModifier.Public.Equals("public"));
     }
 
+    [Fact]
+    public void Assembly_Context_Helpers_Validate_Null_Contexts_And_Leases_Dispose_Deterministically()
+    {
+        var context = new BeeAssemblyBuilder($"DynaBee.Tests.Lease.{Guid.NewGuid():N}").Build();
+        var lease = new AssemblyContextLease(context);
+
+        Assert.Throws<ArgumentNullException>(() => AssemblyContextExtensions.GetClrType(null!, "Generated"));
+        Assert.Throws<ArgumentNullException>(() => new AssemblyContextLease(null!));
+        Assert.Same(context, lease.Context);
+        lease.Dispose();
+        Assert.True(lease.IsDisposed);
+        Assert.Throws<ObjectDisposedException>(() => _ = lease.Context);
+    }
+
     public sealed class UtilityModel
     {
         public int Value { get; set; }
