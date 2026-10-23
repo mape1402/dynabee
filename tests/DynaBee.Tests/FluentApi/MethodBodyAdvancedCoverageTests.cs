@@ -415,6 +415,47 @@ public sealed class MethodBodyAdvancedCoverageTests
         new BeeIndexerExpression(instance, new BeeConstantExpression(0, typeof(int)), indexer).EmitLoad(il);
     }
 
+    [Fact]
+    public void GeneratedBodies_Dispatch_Virtual_Properties_Indexers_And_Overrides()
+    {
+        var baseProperty = typeof(VirtualPropertyBase).GetProperty(nameof(VirtualPropertyBase.Value))!;
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("VirtualMembers", type => type
+                .AddMethod("Update", typeof(int), method => method
+                    .WithParameter<VirtualMemberTarget>("target")
+                    .EmitsBody(body =>
+                    {
+                        var target = body.Parameter<VirtualMemberTarget>("target");
+                        body.Assign(body.Property(target, nameof(VirtualMemberTarget.Value)), body.Constant(4));
+                        body.Assign(body.Index(target, body.Constant(0)), body.Constant(5));
+                        body.Return(body.Add(
+                            body.Property(target, nameof(VirtualMemberTarget.Value)),
+                            body.Index(target, body.Constant(0))));
+                    })))
+            .AddClass("OverriddenProperty", type => type
+                .Inherits<VirtualPropertyBase>()
+                .OverrideProperty(baseProperty, property => property
+                    .Getter(getter => getter.EmitsBody(body => body.Return(body.Constant(0))))
+                    .Setter(setter => setter.EmitsBody(body => body.Return())))
+                .AddMethod("Store", typeof(int), method => method
+                    .WithParameter<int>("value")
+                    .EmitsBody(body =>
+                    {
+                        body.Assign(body.Property(body.Self(), nameof(VirtualPropertyBase.Value)), body.Parameter<int>("value"));
+                        body.Return(body.Property(body.Self(), nameof(VirtualPropertyBase.Value)));
+                    })))
+            .Build();
+
+        var target = new VirtualMemberTarget();
+        var members = context.CreateInstance("VirtualMembers");
+        var overridden = context.CreateInstance("OverriddenProperty");
+
+        Assert.Equal(9, members.GetType().GetMethod("Update")!.Invoke(members, new object[] { target }));
+        Assert.Equal(4, target.Value);
+        Assert.Equal(5, target[0]);
+        Assert.Equal(0, overridden.GetType().GetMethod("Store")!.Invoke(overridden, new object[] { 9 }));
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");
@@ -519,6 +560,24 @@ public sealed class MethodBodyAdvancedCoverageTests
         {
             set { }
         }
+    }
+
+    public class VirtualMemberTarget
+    {
+        private readonly int[] _values = new int[1];
+
+        public virtual int Value { get; set; }
+
+        public virtual int this[int index]
+        {
+            get => _values[index];
+            set => _values[index] = value;
+        }
+    }
+
+    public class VirtualPropertyBase
+    {
+        public virtual int Value { get; set; }
     }
 
     public sealed class AmbiguousIndexer : AmbiguousIndexerBase
