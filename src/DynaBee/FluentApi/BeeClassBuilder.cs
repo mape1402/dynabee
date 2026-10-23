@@ -50,6 +50,43 @@ namespace DynaBee.FluentApi
             => Implements(typeof(TInterface), registerInDi);
 
         /// <summary>
+        /// Implements every method and property required by an interface contract.
+        /// Unconfigured methods receive a default return body and unconfigured properties become auto-properties.
+        /// </summary>
+        /// <param name="interfaceType">Interface contract to implement.</param>
+        /// <param name="configure">Optional contract member configuration.</param>
+        /// <param name="registerInDi">True to register the interface in DI.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder ImplementInterface(
+            Type interfaceType,
+            Action<BeeInterfaceContractBuilder> configure = null,
+            bool registerInDi = true)
+        {
+            if (interfaceType == null)
+                throw new ArgumentNullException(nameof(interfaceType));
+
+            if (!interfaceType.IsInterface)
+                throw new ArgumentException("The provided type must be an interface.", nameof(interfaceType));
+
+            var contract = new BeeInterfaceContractBuilder(this, interfaceType, registerInDi);
+            configure?.Invoke(contract);
+            contract.Apply();
+            return this;
+        }
+
+        /// <summary>
+        /// Implements every method and property required by an interface contract.
+        /// </summary>
+        /// <typeparam name="TInterface">Interface contract to implement.</typeparam>
+        /// <param name="configure">Optional contract member configuration.</param>
+        /// <param name="registerInDi">True to register the interface in DI.</param>
+        /// <returns>The same class builder.</returns>
+        public BeeClassBuilder ImplementInterface<TInterface>(
+            Action<BeeInterfaceContractBuilder> configure = null,
+            bool registerInDi = true)
+            => ImplementInterface(typeof(TInterface), configure, registerInDi);
+
+        /// <summary>
         /// Sets whether this dynamic class is registered as concrete type in DI.
         /// </summary>
         public BeeClassBuilder RegisterAsConcrete(bool register = true)
@@ -274,6 +311,17 @@ namespace DynaBee.FluentApi
             var methodBuilder = new BeeMethodBuilder(baseMethod.Name, baseMethod.ReturnType)
                 .WithParameterRange(baseMethod.GetParameters().Select(x => (x.Name ?? $"arg{x.Position}", (BeeType)x.ParameterType)))
                 .Overrides(baseMethod);
+
+            configure?.Invoke(methodBuilder);
+            _classConfigurator.AddElementBuilder(methodBuilder.ToConfigurator());
+            return this;
+        }
+
+        internal BeeClassBuilder AddInterfaceMethod(MethodInfo interfaceMethod, Action<BeeMethodBuilder> configure)
+        {
+            var methodBuilder = new BeeMethodBuilder(interfaceMethod.Name, interfaceMethod.ReturnType)
+                .WithParameterRange(interfaceMethod.GetParameters().Select(x => (x.Name ?? $"arg{x.Position}", (BeeType)x.ParameterType)))
+                .ImplementsInterfaceMember(interfaceMethod);
 
             configure?.Invoke(methodBuilder);
             _classConfigurator.AddElementBuilder(methodBuilder.ToConfigurator());
