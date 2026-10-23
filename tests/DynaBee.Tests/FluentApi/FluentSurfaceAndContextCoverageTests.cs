@@ -168,6 +168,42 @@ public sealed class FluentSurfaceAndContextCoverageTests
         Assert.Same(enumConfigurator, enumConfigurator.AddElementBuilder(null!));
     }
 
+    [Fact]
+    public void FluentBuilders_Configure_Untyped_Properties_Indexers_And_Property_Overrides()
+    {
+        var baseProperty = typeof(AttributedOverrideBase).GetProperty(nameof(AttributedOverrideBase.Value))!;
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("Configured", type => type
+                .AddAutoProperty("Untyped", (BeeType)typeof(int))
+                .AddProperty("ConfiguredProperty", (BeeType)typeof(string), property => property
+                    .AddAttribute(BeeAttribute.Of<ObsoleteAttribute>("property"))
+                    .AddAttribute<CLSCompliantAttribute>(attribute => attribute
+                        .WithConstructorArgument(false))
+                    .WithMetadata("source", "fluent"))
+                .AddIndexer((BeeType)typeof(Guid), (BeeType)typeof(decimal)))
+            .AddClass("Override", type => type
+                .Inherits<AttributedOverrideBase>()
+                .OverrideProperty(baseProperty, property => property
+                    .AddAttribute(BeeAttribute.Of<ObsoleteAttribute>("override"))
+                    .WithMetadata("source", "override")
+                    .Getter(getter => getter.ReturnsConstant(7))))
+            .Build();
+
+        var configured = context.GetClrType("Configured");
+        var instance = Activator.CreateInstance(configured)!;
+        var index = Guid.NewGuid();
+        configured.GetProperty("Untyped")!.SetValue(instance, 2);
+        configured.GetProperty("Item")!.SetValue(instance, 3.5m, new object[] { index });
+
+        Assert.Equal(2, configured.GetProperty("Untyped")!.GetValue(instance));
+        Assert.Equal(3.5m, configured.GetProperty("Item")!.GetValue(instance, new object[] { index }));
+        Assert.Equal("property", configured.GetProperty("ConfiguredProperty")!.GetCustomAttribute<ObsoleteAttribute>()!.Message);
+        Assert.Equal("fluent", context.Find("Configured").FindOne("ConfiguredProperty").GetMetadata("source"));
+        Assert.Equal(7, ((AttributedOverrideBase)context.CreateInstance("Override")).Value);
+        Assert.Equal("override", context.GetClrType("Override").GetProperty(nameof(AttributedOverrideBase.Value))!.GetCustomAttribute<ObsoleteAttribute>()!.Message);
+        Assert.Equal("override", context.Find("Override").FindOne(nameof(AttributedOverrideBase.Value)).GetMetadata("source"));
+    }
+
     private static string NewAssemblyName()
         => $"DynaBee.Tests.FluentSurfaceContext.{Guid.NewGuid():N}";
 
@@ -192,5 +228,10 @@ public sealed class FluentSurfaceAndContextCoverageTests
 
         public static void Finally()
             => Events.Add("finally");
+    }
+
+    public abstract class AttributedOverrideBase
+    {
+        public virtual int Value => 1;
     }
 }

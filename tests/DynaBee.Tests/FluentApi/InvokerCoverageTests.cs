@@ -96,6 +96,24 @@ public sealed class InvokerCoverageTests
         Assert.Contains("was not found", Assert.Throws<InvalidOperationException>(() => context.GetGeneratedMethodDescriptors(null!)).Message);
     }
 
+    [Fact]
+    public void Invoker_Keys_Use_Type_Method_And_Parameter_Signatures_For_Equality()
+    {
+        var first = InvokerKey.Create("Dispatch", "Echo", new[] { typeof(string) });
+        var same = InvokerKey.Create("Dispatch", "Echo", new[] { typeof(string) });
+        var differentType = InvokerKey.Create("Other", "Echo", new[] { typeof(string) });
+        var differentMethod = InvokerKey.Create("Dispatch", "Other", new[] { typeof(string) });
+        var differentParameters = InvokerKey.Create("Dispatch", "Echo", new[] { typeof(int) });
+
+        Assert.True(first.Equals(same));
+        Assert.True(first.Equals((object)same));
+        Assert.False(first.Equals(differentType));
+        Assert.False(first.Equals(differentMethod));
+        Assert.False(first.Equals(differentParameters));
+        Assert.False(first.Equals("not-a-key"));
+        Assert.Equal(first.GetHashCode(), same.GetHashCode());
+    }
+
     private static IAssemblyContext CreateContext()
     {
         DispatchRecorder.LastValue = null;
