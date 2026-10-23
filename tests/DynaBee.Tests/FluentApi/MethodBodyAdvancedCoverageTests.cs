@@ -559,6 +559,63 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.Equal(typeof(int), inheritedBody.Field(inheritedBody.Self(), nameof(InheritedTypeBuilderBase.Counter)).Type);
     }
 
+    [Fact]
+    public void MethodBodyBuilder_Uses_Self_Fallbacks_And_Rejects_Invalid_Expression_Arguments()
+    {
+        var body = new BeeMethodBodyBuilder(
+            new DynamicMethod("Fallbacks", typeof(void), Type.EmptyTypes).GetILGenerator(),
+            typeof(void),
+            Array.Empty<(string Name, Type Type, int ArgumentIndex)>(),
+            typeof(SelfFallbackProbe));
+        var baseMethod = typeof(BaseCallTarget).GetMethod(nameof(BaseCallTarget.GetValue))!;
+        var baseBody = new BeeMethodBodyBuilder(
+            new DynamicMethod("Base", typeof(int), Type.EmptyTypes).GetILGenerator(),
+            typeof(int),
+            Array.Empty<(string Name, Type Type, int ArgumentIndex)>(),
+            typeof(BaseCallTarget),
+            baseMethod: baseMethod);
+        var genericParameter = typeof(List<>).GetGenericArguments()[0];
+
+        Assert.Equal(typeof(int), body.Property(body.Self(), nameof(SelfFallbackProbe.Value)).Type);
+        Assert.Equal(typeof(int), body.Field(body.Self(), nameof(SelfFallbackProbe.Field)).Type);
+        Assert.Equal(typeof(int), body.Call(body.Self(), nameof(SelfFallbackProbe.VirtualValue), Type.EmptyTypes).Type);
+        Assert.Throws<MissingMemberException>(() => body.Property(body.Self(), "Missing"));
+        Assert.Throws<MissingFieldException>(() => body.Field(body.Self(), "Missing"));
+        Assert.Throws<MissingMethodException>(() => body.Call(body.Self(), "Missing", Type.EmptyTypes));
+        Assert.Throws<NotSupportedException>(() => body.New(typeof(ConstructorTarget), new IBeeValueExpression[] { null! }));
+        Assert.Throws<NotSupportedException>(() => baseBody.CallBase(new IBeeValueExpression[] { null! }));
+        Assert.Throws<NotSupportedException>(() => body.StaticCall(
+            typeof(Guid).GetMethod(nameof(Guid.NewGuid), Type.EmptyTypes)!,
+            new IBeeValueExpression[] { null! }));
+        Assert.Throws<AmbiguousMatchException>(() => body.New(
+            typeof(AmbiguousConstructorTarget),
+            body.Constant(1)));
+        Assert.Throws<MissingMethodException>(() => body.New(
+            typeof(ConstructorTarget),
+            body.Constant(null!, genericParameter)));
+        Assert.True(BeeIlConversions.CanConvert(typeof(int), typeof(long?)));
+    }
+
+    [Fact]
+    public void Generated_Bodies_Execute_String_Addition_And_Protected_Value_Returns()
+    {
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("BodyBranches", type => type
+                .AddMethod("Append", typeof(string), method => method
+                    .WithParameter<string>("value")
+                    .EmitsBody(body => body.Return(body.Add(body.Parameter<string>("value"), body.Constant("!")))))
+                .AddMethod("ReturnFromCatch", typeof(int), method => method
+                    .EmitsBody(body => body.Try(
+                        tryBody => tryBody.Return(tryBody.Constant(7)),
+                        catches => catches.Catch<InvalidOperationException>("error", (_, catchBody) => catchBody.Return(catchBody.Constant(-1)))))))
+            .Build();
+        var instance = context.CreateInstance("BodyBranches");
+        var type = instance.GetType();
+
+        Assert.Equal("value!", type.GetMethod("Append")!.Invoke(instance, new object[] { "value" }));
+        Assert.Equal(7, type.GetMethod("ReturnFromCatch")!.Invoke(instance, null));
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");
@@ -581,6 +638,27 @@ public sealed class MethodBodyAdvancedCoverageTests
         }
 
         public int Value { get; }
+    }
+
+    public sealed class AmbiguousConstructorTarget
+    {
+        public AmbiguousConstructorTarget(IComparable value)
+        {
+        }
+
+        public AmbiguousConstructorTarget(IFormattable value)
+        {
+        }
+    }
+
+    public class SelfFallbackProbe
+    {
+        public virtual int Value { get; set; }
+
+        public int Field;
+
+        public virtual int VirtualValue()
+            => Value + Field;
     }
 
     private enum ConversionKind

@@ -421,6 +421,73 @@ public sealed class ConfiguratorCoverageTests
     }
 
     [Fact]
+    public void Direct_Configurators_Apply_Defaults_And_Forward_Base_Constructor_Arguments()
+    {
+        Assert.Throws<ArgumentException>(() => new EventConfigurator(" ", typeof(EventHandler), default, null, null));
+        Assert.Throws<ArgumentException>(() => new InterfaceConfigurator(" ", default));
+
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(NewAssemblyName()), AssemblyBuilderAccess.Run);
+        var module = assembly.DefineDynamicModule("DirectConfigurators");
+        var assemblyContext = new AssemblyContextBuilder("DirectConfigurators", assembly, module);
+        var members = (TypeContextBuilder)assemblyContext.AddTypeBuilder(
+            "DirectMembers",
+            module.DefineType("DirectMembers", TypeAttributes.Public, typeof(object)));
+        var forwarded = (TypeContextBuilder)assemblyContext.AddTypeBuilder(
+            "Forwarded",
+            module.DefineType("Forwarded", TypeAttributes.Public, typeof(ForwardedConstructorBase)));
+
+        new IndexerConfigurator(
+            "Item",
+            typeof(string),
+            typeof(int),
+            hasGetter: true,
+            hasSetter: true,
+            default,
+            default,
+            attributes: null,
+            metadata: null).Configure(members);
+        new EventConfigurator("Changed", typeof(EventHandler), default, attributes: null, metadata: null).Configure(members);
+        new ConstructorConfigurator(
+            new[] { ("value", (BeeType)typeof(string)) },
+            body: null,
+            baseConstructor: typeof(ForwardedConstructorBase).GetConstructor(new[] { typeof(string) })!,
+            baseConstructorArgumentNames: new[] { "value" }).Configure(forwarded);
+
+        new InterfaceConfigurator("IDirect", default)
+            .AddElementBuilder(new InterfaceMethodConfigurator(
+                "Run",
+                typeof(void),
+                Array.Empty<(string Name, BeeType Type)>(),
+                default,
+                attributes: null))
+            .AddElementBuilder(new InterfacePropertyConfigurator(
+                "Value",
+                typeof(int),
+                hasGetter: true,
+                hasSetter: true,
+                default,
+                default,
+                attributes: null))
+            .Configure(assemblyContext);
+        new EnumConfigurator("DirectEnum", typeof(int), default).AddValue("One", 1).Configure(assemblyContext);
+        new StructConfigurator("DirectStruct", default).Configure(assemblyContext);
+
+        var context = assemblyContext.Build();
+        var instance = Activator.CreateInstance(context.GetClrType("DirectMembers"))!;
+        var item = instance.GetType().GetProperty("Item")!;
+        item.SetValue(instance, 5, new object[] { "key" });
+
+        Assert.Equal(5, item.GetValue(instance, new object[] { "key" }));
+        Assert.True(instance.GetType().GetEvent("Changed")!.AddMethod!.IsPublic);
+        Assert.True(context.GetClrType("IDirect").GetMethod("Run")!.IsPublic);
+        Assert.True(context.GetClrType("IDirect").GetProperty("Value")!.GetMethod!.IsPublic);
+        Assert.True(context.GetClrType("IDirect").GetProperty("Value")!.SetMethod!.IsPublic);
+        Assert.True(context.GetClrType("DirectEnum").IsPublic);
+        Assert.True(context.GetClrType("DirectStruct").IsPublic);
+        Assert.Equal("forwarded", ((ForwardedConstructorBase)Activator.CreateInstance(context.GetClrType("Forwarded"), "forwarded")!).Value);
+    }
+
+    [Fact]
     public void Member_Configurators_Emit_Properties_Indexers_Fields_And_Events_With_Requested_Accessors()
     {
         Assert.Throws<ArgumentException>(() => new FieldConfigurator(" ", typeof(int), default));
@@ -756,6 +823,14 @@ public sealed class ConfiguratorCoverageTests
         public ConstructorBaseInt(int value)
         {
         }
+    }
+
+    public class ForwardedConstructorBase
+    {
+        public ForwardedConstructorBase(string value)
+            => Value = value;
+
+        public string Value { get; }
     }
 
     public interface IValidationContract
