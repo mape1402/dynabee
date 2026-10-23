@@ -314,7 +314,7 @@ namespace DynaBee.Infrastructure.Configurators
             {
                 il.Emit(OpCodes.Dup);
                 il.Emit(OpCodes.Ldc_I4, i);
-                il.Emit(OpCodes.Ldarg, i + 1);
+                il.Emit(OpCodes.Ldarg, _isStatic ? i : i + 1);
 
                 var parameterType = parameterTypes[i];
                 if (parameterType.IsValueType)
