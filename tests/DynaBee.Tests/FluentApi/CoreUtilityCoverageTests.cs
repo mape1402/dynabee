@@ -3,6 +3,7 @@ namespace DynaBee.Tests.FluentApi;
 using DynaBee;
 using DynaBee.FluentApi;
 using DynaBee.Infrastructure;
+using DynaBee.Infrastructure.Configurators;
 
 public sealed class CoreUtilityCoverageTests
 {
@@ -93,6 +94,19 @@ public sealed class CoreUtilityCoverageTests
         lease.Dispose();
         Assert.True(lease.IsDisposed);
         Assert.Throws<ObjectDisposedException>(() => _ = lease.Context);
+    }
+
+    [Fact]
+    public void Fluent_Wrapper_Constructors_And_Accessor_Bodies_Reject_Invalid_Null_Contracts()
+    {
+        Assert.Throws<ArgumentNullException>(() => new BeeEnumBuilder(null!));
+        Assert.Throws<ArgumentNullException>(() => new BeeInterfaceBuilder(null!));
+        Assert.Throws<ArgumentNullException>(() => new BeeStructBuilder(null!));
+        Assert.Throws<ArgumentNullException>(() => new BeeRecordClassBuilder(null!));
+        Assert.Throws<ArgumentNullException>(() => new BeeRecordStructBuilder(null!));
+        Assert.Throws<ArgumentNullException>(() => new BeePropertyOverrideBuilder(null!));
+        Assert.Throws<ArgumentNullException>(() => new BeePropertyAccessorBuilder().Emits(null!));
+        Assert.Throws<ArgumentNullException>(() => new BeePropertyAccessorBuilder().EmitsBody(null!));
     }
 
     public sealed class UtilityModel
