@@ -185,6 +185,9 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.Throws<InvalidOperationException>(() => abstractBody.CallBase());
         Assert.Throws<AmbiguousMatchException>(() => body.Index(body.Parameter<AmbiguousIndexer>("item"), body.Constant((short)1)));
         Assert.Throws<InvalidOperationException>(() => body.StaticCall(typeof(DateTime).GetMethod(nameof(DateTime.IsLeapYear))!));
+        Assert.Throws<InvalidOperationException>(() => voidBody.Try(
+            tryBody => tryBody.Evaluate(tryBody.Constant(1)),
+            finallyBody: finallyBody => finallyBody.Return()));
 
     }
 
