@@ -3,6 +3,8 @@ namespace DynaBee.Tests.FluentApi;
 using System.Reflection;
 using DynaBee.FluentApi;
 using DynaBee.FluentApi.Diagnostics;
+using DynaBee.FluentApi.DependencyInjection;
+using DynaBee.FluentApi.Extensions;
 using DynaBee.FluentApi.Generation;
 using DynaBee.Infrastructure;
 
@@ -187,6 +189,60 @@ public sealed class PlanAndDiagnosticsCoverageTests
         Assert.Equal("Protected", InvokeDiagnosticHelper("GetFieldAccess", GetField("ProtectedField")));
         Assert.Equal("ProtectedInternal", InvokeDiagnosticHelper("GetFieldAccess", GetField("ProtectedInternalField")));
         Assert.Equal("PrivateProtected", InvokeDiagnosticHelper("GetFieldAccess", GetField("PrivateProtectedField")));
+    }
+
+    [Fact]
+    public void Source_Export_Handles_Global_Types_Arrays_Generics_And_Current_Directory_Output()
+    {
+        var plan = new DynaBeeGenerationPlan("DynaBee.Tests.SourceShapes")
+            .AddClass("SourceShapes", type => type
+                .AddProperty("Numbers", typeof(int[]))
+                .AddProperty("Lookup", typeof(Dictionary<string, List<decimal>>))
+                .AddMethod("Use", typeof(void), method => method.WithParameter<Uri>("value")));
+        var result = plan.ExportSource();
+        var file = $"dynabee-source-{Guid.NewGuid():N}.cs";
+
+        Assert.Contains("public int[] Numbers { get; set; }", result.Source);
+        Assert.Contains("global::System.Collections.Generic.Dictionary<string, global::System.Collections.Generic.List<decimal>>", result.Source);
+        Assert.Contains("public void Use(global::System.Uri arg0)", result.Source);
+        Assert.Throws<ArgumentException>(() => result.WriteTo(" "));
+        try
+        {
+            result.WriteTo(file);
+            Assert.Equal(result.Source, File.ReadAllText(file));
+        }
+        finally
+        {
+            if (File.Exists(file))
+                File.Delete(file);
+        }
+
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeSourceExporter().Export(null!));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeSourceExportResult(null!, Array.Empty<DynaBeeSourceMapEntry>()));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeSourceExportResult(string.Empty, null!));
+    }
+
+    [Fact]
+    public void Generation_Executor_Validates_Its_Dependencies_And_Supports_Cached_And_Uncached_Builds()
+    {
+        var factory = new DynaBeeAssemblyBuilderFactory();
+        var cache = new DynaBeeGenerationPlanCache();
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGenerationPlanExecutor(null!, cache, Array.Empty<IDynaBeeGenerationExtension>(), Array.Empty<IDynaBeeMetadataSchema>()));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGenerationPlanExecutor(factory, null!, Array.Empty<IDynaBeeGenerationExtension>(), Array.Empty<IDynaBeeMetadataSchema>()));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGenerationPlanExecutor(factory, cache, null!, Array.Empty<IDynaBeeMetadataSchema>()));
+        Assert.Throws<ArgumentNullException>(() => new DynaBeeGenerationPlanExecutor(factory, cache, Array.Empty<IDynaBeeGenerationExtension>(), null!));
+
+        var executor = new DynaBeeGenerationPlanExecutor(factory, cache, Array.Empty<IDynaBeeGenerationExtension>(), Array.Empty<IDynaBeeMetadataSchema>());
+        var plan = new DynaBeeGenerationPlan($"DynaBee.Tests.Executor.{Guid.NewGuid():N}").AddClass("Generated", _ => { });
+
+        Assert.Throws<ArgumentNullException>(() => executor.Build(null!));
+        var cached = executor.Build(plan);
+        Assert.Same(cached, executor.Build(plan));
+        var uncached = executor.Build(plan, useCache: false);
+        Assert.NotSame(cached.Assembly, uncached.Assembly);
+        Assert.Throws<ArgumentException>(() => cache.GetOrAdd(" ", () => cached));
+        Assert.Throws<ArgumentNullException>(() => cache.GetOrAdd("key", null!));
+        cache.Clear();
     }
 
     private static string InvokeDiagnosticHelper(string name, MemberInfo member)
