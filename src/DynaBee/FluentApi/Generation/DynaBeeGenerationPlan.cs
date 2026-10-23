@@ -86,6 +86,8 @@ namespace DynaBee.FluentApi.Generation
             if (builder == null)
                 throw new ArgumentNullException(nameof(builder));
 
+            Validate().ThrowIfErrors();
+
             foreach (var metadata in _metadata)
                 builder.WithMetadata(metadata.Key, metadata.Value);
 
@@ -99,6 +101,108 @@ namespace DynaBee.FluentApi.Generation
             }
 
             return builder;
+        }
+
+        /// <summary>
+        /// Validates the declarative portion of this generation plan without emitting an assembly.
+        /// </summary>
+        /// <returns>The collected diagnostics.</returns>
+        public DynaBeePlanValidationResult Validate()
+        {
+            var diagnostics = new List<DynaBeePlanDiagnostic>();
+            var classesByName = _classes
+                .GroupBy(x => x.Name, StringComparer.Ordinal)
+                .Where(x => x.Count() > 1);
+
+            foreach (var duplicate in classesByName)
+            {
+                diagnostics.Add(new DynaBeePlanDiagnostic(
+                    DynaBeePlanDiagnosticSeverity.Error,
+                    "DBP001",
+                    $"The generated type name '{duplicate.Key}' is declared more than once.",
+                    duplicate.Key));
+            }
+
+            foreach (var classPlan in _classes)
+                ValidateClass(classPlan, diagnostics);
+
+            return new DynaBeePlanValidationResult(diagnostics);
+        }
+
+        private static void ValidateClass(DynaBeeGeneratedClassPlan classPlan, ICollection<DynaBeePlanDiagnostic> diagnostics)
+        {
+            if (classPlan.BaseType != null)
+            {
+                if (classPlan.BaseType.IsInterface || classPlan.BaseType.IsValueType)
+                {
+                    diagnostics.Add(new DynaBeePlanDiagnostic(
+                        DynaBeePlanDiagnosticSeverity.Error,
+                        "DBP010",
+                        $"Base type '{classPlan.BaseType}' must be a non-value class.",
+                        classPlan.Name));
+                }
+                else if (classPlan.BaseType.IsSealed)
+                {
+                    diagnostics.Add(new DynaBeePlanDiagnostic(
+                        DynaBeePlanDiagnosticSeverity.Error,
+                        "DBP011",
+                        $"Base type '{classPlan.BaseType}' is sealed and cannot be inherited.",
+                        classPlan.Name));
+                }
+            }
+
+            foreach (var interfaceType in classPlan.Interfaces.Where(x => x == null || !x.IsInterface))
+            {
+                diagnostics.Add(new DynaBeePlanDiagnostic(
+                    DynaBeePlanDiagnosticSeverity.Error,
+                    "DBP020",
+                    $"'{interfaceType}' is not an interface and cannot be implemented.",
+                    classPlan.Name));
+            }
+
+            foreach (var duplicate in classPlan.Interfaces
+                .Where(x => x != null)
+                .GroupBy(x => x)
+                .Where(x => x.Count() > 1))
+            {
+                diagnostics.Add(new DynaBeePlanDiagnostic(
+                    DynaBeePlanDiagnosticSeverity.Warning,
+                    "DBP021",
+                    $"Interface '{duplicate.Key}' is declared more than once.",
+                    classPlan.Name));
+            }
+
+            foreach (var member in classPlan.Members.Where(x => x.ValueType == null && x.Name != ".ctor"))
+            {
+                diagnostics.Add(new DynaBeePlanDiagnostic(
+                    DynaBeePlanDiagnosticSeverity.Error,
+                    "DBP030",
+                    $"Member '{member.Name}' does not define a value or return type.",
+                    classPlan.Name,
+                    member.Name));
+            }
+
+            foreach (var duplicate in classPlan.Members
+                .Where(x => x.ElementType != ElementType.Method)
+                .GroupBy(x => (x.ElementType, x.Name))
+                .Where(x => x.Count() > 1))
+            {
+                diagnostics.Add(new DynaBeePlanDiagnostic(
+                    DynaBeePlanDiagnosticSeverity.Error,
+                    "DBP031",
+                    $"{duplicate.Key.ElementType} '{duplicate.Key.Name}' is declared more than once.",
+                    classPlan.Name,
+                    duplicate.Key.Name));
+            }
+
+            foreach (var serviceType in classPlan.ServiceTypes.Where(x => x == null))
+            {
+                diagnostics.Add(new DynaBeePlanDiagnostic(
+                    DynaBeePlanDiagnosticSeverity.Error,
+                    "DBP040",
+                    "A service registration type cannot be null.",
+                    classPlan.Name));
+            }
         }
     }
 
