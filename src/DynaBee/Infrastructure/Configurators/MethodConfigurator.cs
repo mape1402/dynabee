@@ -20,6 +20,7 @@ namespace DynaBee.Infrastructure.Configurators
         private readonly IReadOnlyCollection<BeeAttribute> _attributes;
         private readonly IReadOnlyDictionary<string, object> _metadata;
         private readonly MethodInfo _overrideMethod;
+        private readonly MethodInfo _interfaceMethod;
 
         public MethodConfigurator(
             string name,
@@ -33,7 +34,8 @@ namespace DynaBee.Infrastructure.Configurators
             MethodAccessModifier accessModifier,
             IReadOnlyCollection<BeeAttribute> attributes,
             IReadOnlyDictionary<string, object> metadata = null,
-            MethodInfo overrideMethod = null)
+            MethodInfo overrideMethod = null,
+            MethodInfo interfaceMethod = null)
         {
             _name = string.IsNullOrWhiteSpace(name) ? throw new ArgumentException(nameof(name)) : name;
             _returnType = returnType;
@@ -47,6 +49,7 @@ namespace DynaBee.Infrastructure.Configurators
             _attributes = attributes ?? Array.Empty<BeeAttribute>();
             _metadata = metadata ?? new Dictionary<string, object>();
             _overrideMethod = overrideMethod;
+            _interfaceMethod = interfaceMethod;
         }
 
         public void Configure(ITypeContextBuilder typeContextBuilder)
@@ -62,6 +65,7 @@ namespace DynaBee.Infrastructure.Configurators
             var returnType = ResolveType(_returnType, typeContextBuilder);
             var parameterTypes = _parameters.Select(x => ResolveType(x.Type, typeContextBuilder)).ToArray();
             ValidateOverride(typeContextBuilder, returnType, parameterTypes);
+            ValidateInterfaceImplementation(returnType, parameterTypes);
 
             var access = ResolveAccessModifier();
             var attributes = access.Attributes | MethodAttributes.HideBySig;
@@ -81,6 +85,8 @@ namespace DynaBee.Infrastructure.Configurators
             var methodBuilder = typeContextBuilder.TypeBuilder.DefineMethod(_name, attributes, returnType, parameterTypes);
             if (_overrideMethod != null)
                 typeContextBuilder.TypeBuilder.DefineMethodOverride(methodBuilder, _overrideMethod);
+            if (_interfaceMethod != null)
+                typeContextBuilder.TypeBuilder.DefineMethodOverride(methodBuilder, _interfaceMethod);
 
             if (typeContextBuilder is TypeContextBuilder concreteTypeContextBuilder)
                 concreteTypeContextBuilder.RegisterMethod(_name, parameterTypes, methodBuilder);
@@ -168,6 +174,37 @@ namespace DynaBee.Infrastructure.Configurators
 
             if (!_accessModifier.IsDefault && _accessModifier.Attributes != GetAccessModifier(_overrideMethod).Attributes)
                 throw new InvalidOperationException($"Override method '{_overrideMethod.Name}' must preserve base method access level '{GetAccessModifier(_overrideMethod)}'.");
+        }
+
+        private void ValidateInterfaceImplementation(Type returnType, Type[] parameterTypes)
+        {
+            if (_interfaceMethod == null)
+                return;
+
+            if (_isStatic)
+                throw new InvalidOperationException($"Interface method '{_interfaceMethod.Name}' cannot be implemented by a static method.");
+
+            if (_interfaceMethod.DeclaringType == null || !_interfaceMethod.DeclaringType.IsInterface)
+                throw new InvalidOperationException($"Method '{_interfaceMethod.Name}' is not declared by an interface.");
+
+            if (_interfaceMethod.ReturnType != returnType)
+                throw new InvalidOperationException($"Interface method '{_interfaceMethod.Name}' must return '{_interfaceMethod.ReturnType.FullName}', not '{returnType.FullName}'.");
+
+            var interfaceParameters = _interfaceMethod.GetParameters();
+            if (interfaceParameters.Length != parameterTypes.Length)
+                throw new InvalidOperationException($"Interface method '{_interfaceMethod.Name}' must define {interfaceParameters.Length} parameter(s).");
+
+            for (var i = 0; i < interfaceParameters.Length; i++)
+            {
+                if (interfaceParameters[i].ParameterType != parameterTypes[i])
+                {
+                    throw new InvalidOperationException(
+                        $"Interface method '{_interfaceMethod.Name}' parameter {i} must be '{interfaceParameters[i].ParameterType.FullName}', not '{parameterTypes[i].FullName}'.");
+                }
+            }
+
+            if (!_accessModifier.IsDefault && _accessModifier.Attributes != MethodAccessModifier.Public.Attributes)
+                throw new InvalidOperationException($"Interface method '{_interfaceMethod.Name}' must be public.");
         }
 
         private MethodAccessModifier ResolveAccessModifier()
