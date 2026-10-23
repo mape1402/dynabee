@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using DynaBee.FluentApi;
 using DynaBee.FluentApi.Body;
+using DynaBee.Infrastructure.ContextBuilders;
 
 public sealed class MethodBodyAdvancedCoverageTests
 {
@@ -330,6 +331,29 @@ public sealed class MethodBodyAdvancedCoverageTests
         Assert.Throws<ArgumentNullException>(() => new BeeMethodBodyBuilder(il, null!, parameters));
     }
 
+    [Fact]
+    public void Body_Expressions_Reject_Missing_Property_And_Indexer_Accessors_Before_Emission()
+    {
+        var il = new DynamicMethod("Accessors", typeof(void), Type.EmptyTypes).GetILGenerator();
+        var instance = new BeeParameterExpression("value", typeof(AccessorTarget), 0);
+        var getterOnly = new BeePropertyExpression(instance, typeof(AccessorTarget).GetProperty(nameof(AccessorTarget.GetterOnly))!);
+        var setterOnly = new BeePropertyExpression(instance, typeof(AccessorTarget).GetProperty(nameof(AccessorTarget.SetterOnly))!);
+        var staticGetterOnly = new BeeStaticPropertyExpression(typeof(AccessorTarget).GetProperty(nameof(AccessorTarget.StaticGetterOnly))!);
+        var staticSetterOnly = new BeeStaticPropertyExpression(typeof(AccessorTarget).GetProperty(nameof(AccessorTarget.StaticSetterOnly))!);
+        var indexerGetterOnly = new BeeIndexerExpression(instance, new BeeConstantExpression(0, typeof(int)), typeof(AccessorTarget).GetProperty("Item", new[] { typeof(int) })!);
+        var indexerSetterOnly = new BeeIndexerExpression(instance, new BeeConstantExpression("key", typeof(string)), typeof(AccessorTarget).GetProperty("Item", new[] { typeof(string) })!);
+        var dynamicGetterOnly = new BeeDynamicPropertyExpression(instance, "Dynamic", new DynamicPropertyAccessor(typeof(int), null!, null!));
+
+        Assert.Throws<InvalidOperationException>(() => getterOnly.EmitAssign(il, new BeeConstantExpression(1, typeof(int))));
+        Assert.Throws<InvalidOperationException>(() => setterOnly.EmitLoad(il));
+        Assert.Throws<InvalidOperationException>(() => staticGetterOnly.EmitAssign(il, new BeeConstantExpression(1, typeof(int))));
+        Assert.Throws<InvalidOperationException>(() => staticSetterOnly.EmitLoad(il));
+        Assert.Throws<InvalidOperationException>(() => indexerGetterOnly.EmitAssign(il, new BeeConstantExpression(1, typeof(int))));
+        Assert.Throws<InvalidOperationException>(() => indexerSetterOnly.EmitLoad(il));
+        Assert.Throws<InvalidOperationException>(() => dynamicGetterOnly.EmitLoad(il));
+        Assert.Throws<InvalidOperationException>(() => dynamicGetterOnly.EmitAssign(il, new BeeConstantExpression(1, typeof(int))));
+    }
+
     private static void CopyArrayValue<T>(IBeeMethodBodyBuilder body, IBeeValueExpression value)
     {
         var array = body.DeclareLocal<T[]>("array");
@@ -397,6 +421,30 @@ public sealed class MethodBodyAdvancedCoverageTests
     {
         public virtual int GetValue()
             => 6;
+    }
+
+    public sealed class AccessorTarget
+    {
+        public int GetterOnly => 1;
+
+        public int SetterOnly
+        {
+            set { }
+        }
+
+        public static int StaticGetterOnly => 1;
+
+        public static int StaticSetterOnly
+        {
+            set { }
+        }
+
+        public int this[int index] => index;
+
+        public int this[string key]
+        {
+            set { }
+        }
     }
 
     public sealed class AmbiguousIndexer : AmbiguousIndexerBase

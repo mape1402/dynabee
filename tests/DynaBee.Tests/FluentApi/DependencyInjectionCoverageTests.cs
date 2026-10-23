@@ -3,6 +3,7 @@ namespace DynaBee.Tests.FluentApi;
 using System.Reflection;
 using DynaBee.FluentApi;
 using DynaBee.FluentApi.DependencyInjection;
+using DynaBee.Infrastructure.Contexts;
 using Microsoft.Extensions.DependencyInjection;
 
 public sealed class DependencyInjectionCoverageTests
@@ -229,6 +230,56 @@ public sealed class DependencyInjectionCoverageTests
         Assert.Same(services.GetRequiredService<ICoverageService>(), services.GetRequiredService<ICoverageService>());
     }
 
+    [Fact]
+    public void Di_Registration_Policy_Resolves_Metadata_Rules_And_Fallbacks_Deterministically()
+    {
+        var implementation = typeof(CoverageImplementation);
+        var fallback = new TypeContext("Service", implementation, Array.Empty<IElementContext>());
+        var metadata = new TypeContext(
+            "Service",
+            implementation,
+            Array.Empty<IElementContext>(),
+            new Dictionary<string, object>
+            {
+                [BeeDiMetadataKeys.RegisterAsConcrete] = false,
+                [BeeDiMetadataKeys.InterfaceRegistrations] = new Dictionary<Type, bool>
+                {
+                    [typeof(ICoverageService)] = true,
+                    [typeof(IHiddenService)] = false,
+                },
+                [BeeDiMetadataKeys.ServiceRegistrations] = new Dictionary<Type, bool>
+                {
+                    [typeof(IAdditionalService)] = true,
+                    [typeof(IDisposable)] = false,
+                },
+            });
+        var forceConcrete = new DynaBeeGeneratedTypeRegistrationRule(
+            _ => true,
+            Array.Empty<Type>(),
+            null,
+            true,
+            Array.Empty<Func<ITypeContext, IEnumerable<ServiceDescriptor>>>());
+        var skipConcrete = new DynaBeeGeneratedTypeRegistrationRule(
+            _ => true,
+            Array.Empty<Type>(),
+            null,
+            false,
+            Array.Empty<Func<ITypeContext, IEnumerable<ServiceDescriptor>>>());
+
+        Assert.True(InvokeDiPolicy<bool>("ResolveRegisterConcreteType", fallback, Array.Empty<DynaBeeGeneratedTypeRegistrationRule>()));
+        Assert.False(InvokeDiPolicy<bool>("ResolveRegisterConcreteType", metadata, Array.Empty<DynaBeeGeneratedTypeRegistrationRule>()));
+        Assert.True(InvokeDiPolicy<bool>("ResolveRegisterConcreteType", metadata, new[] { skipConcrete, forceConcrete }));
+        Assert.Equal(new[] { typeof(ICoverageService) }, InvokeDiPolicy<IEnumerable<Type>>("ResolveInterfaceRegistrations", metadata, implementation));
+        Assert.Contains(typeof(ICoverageService), InvokeDiPolicy<IEnumerable<Type>>("ResolveInterfaceRegistrations", fallback, implementation));
+        Assert.Equal(new[] { typeof(IAdditionalService) }, InvokeDiPolicy<IEnumerable<Type>>("ResolveServiceRegistrations", metadata, implementation));
+        Assert.Empty(InvokeDiPolicy<IEnumerable<Type>>("ResolveServiceRegistrations", fallback, implementation));
+    }
+
+    private static T InvokeDiPolicy<T>(string name, params object[] arguments)
+        => (T)typeof(DynaBeeServiceCollectionExtensions)
+            .GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)!
+            .Invoke(null, arguments)!;
+
     private static string NewAssemblyName()
         => $"DynaBee.Tests.DiCoverage.{Guid.NewGuid():N}";
 
@@ -243,6 +294,16 @@ public sealed class DependencyInjectionCoverageTests
 
     public interface IAdditionalService
     {
+    }
+
+    public sealed class CoverageImplementation : ICoverageService, IHiddenService, IAdditionalService, IDisposable
+    {
+        public string GetValue()
+            => "implementation";
+
+        public void Dispose()
+        {
+        }
     }
 
     public sealed record CoverageProjection(string TypeName);
