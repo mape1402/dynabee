@@ -103,6 +103,7 @@ public sealed class ConfiguratorCoverageTests
         var final = typeof(FinalOverrideBase).GetProperty(nameof(FinalOverrideBase.Number))!;
         var virtualMethod = typeof(OverrideBase).GetMethod(nameof(OverrideBase.VirtualMethod))!;
         var regularMethod = typeof(OverrideBase).GetMethod(nameof(OverrideBase.RegularMethod))!;
+        var sealedMethod = typeof(FinalMethodOverrideBase).GetMethod(nameof(FinalMethodOverrideBase.Transform))!;
 
         Assert.Throws<InvalidOperationException>(() => BuildInvalid(type => type.OverrideProperty(writable, _ => { })));
         Assert.Throws<InvalidOperationException>(() => BuildInvalid(type => type.OverrideProperty(readOnly, property => property.Setter(_ => { }))));
@@ -111,11 +112,29 @@ public sealed class ConfiguratorCoverageTests
         Assert.Throws<InvalidOperationException>(() => BuildInvalid(type => type.OverrideMethod(regularMethod, method => method.EmitsBody(body => body.Return(body.Constant(1))))));
         Assert.Throws<InvalidOperationException>(() => BuildInvalid(type => type.OverrideMethod(virtualMethod, method => method.AsStatic().EmitsBody(body => body.Return(body.Constant(1))))));
         Assert.Throws<InvalidOperationException>(() => BuildInvalid(type => type.OverrideMethod(virtualMethod, method => method.WithAccess(MethodAccessModifier.Protected).EmitsBody(body => body.Return(body.Constant(1))))));
+        Assert.Throws<InvalidOperationException>(() => ConfigureAndBuild(
+            CreateMethodConfigurator(overrideMethod: sealedMethod), typeof(FinalMethodOverrideBase)));
         Assert.Throws<InvalidOperationException>(() => new BeeAssemblyBuilder(NewAssemblyName())
             .AddClass("FinalOverride", type => type
                 .Inherits<FinalOverrideBase>()
                 .OverrideProperty(final, property => property.Getter(_ => { })))
             .Build());
+    }
+
+    [Fact]
+    public void Fluent_Overrides_And_Interface_Contracts_Use_Default_Bodies_When_Not_Configured()
+    {
+        var baseMethod = typeof(OverrideBase).GetMethod(nameof(OverrideBase.VirtualMethod))!;
+        var context = new BeeAssemblyBuilder(NewAssemblyName())
+            .AddClass("DefaultOverride", type => type
+                .Inherits<OverrideBase>()
+                .OverrideMethod(baseMethod))
+            .AddClass("DefaultContract", type => type
+                .ImplementInterface<IValidationContract>())
+            .Build();
+
+        Assert.Equal(0, ((OverrideBase)context.CreateInstance("DefaultOverride")).VirtualMethod());
+        Assert.Equal(0, ((IValidationContract)context.CreateInstance("DefaultContract")).Transform(4));
     }
 
     [Fact]
@@ -801,6 +820,12 @@ public sealed class ConfiguratorCoverageTests
     public class FinalOverrideBase : OverrideBase
     {
         public sealed override int Number { get; set; }
+    }
+
+    public class FinalMethodOverrideBase : ValidationBase
+    {
+        public sealed override int Transform(int value)
+            => value;
     }
 
     public class SetterOnlyOverrideBase
