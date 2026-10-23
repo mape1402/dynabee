@@ -58,6 +58,7 @@ public sealed class CoreUtilityCoverageTests
         var different = new UtilityModel { Value = 4 };
 
         Assert.True(RecordSemanticsHelper.EqualsByProperties(first, first, new[] { nameof(UtilityModel.Value) }));
+        Assert.False(RecordSemanticsHelper.EqualsByProperties(null!, first, new[] { nameof(UtilityModel.Value) }));
         Assert.False(RecordSemanticsHelper.EqualsByProperties(first, null!, new[] { nameof(UtilityModel.Value) }));
         Assert.False(RecordSemanticsHelper.EqualsByProperties(first, "other", new[] { nameof(UtilityModel.Value) }));
         Assert.True(RecordSemanticsHelper.EqualsByProperties(first, same, new[] { nameof(UtilityModel.Value) }));

@@ -164,6 +164,29 @@ public sealed class PlanAndDiagnosticsCoverageTests
     }
 
     [Fact]
+    public void Diagnostics_Distinguish_One_Sided_Properties_And_Overloaded_Member_Metadata()
+    {
+        var context = new BeeAssemblyBuilder($"DynaBee.Tests.DiagnosticsEdges.{Guid.NewGuid():N}")
+            .AddClass("DiagnosticEdges", type => type
+                .AddProperty<int>("ReadOnly", property => property.AsReadOnly())
+                .AddProperty<int>("WriteOnly", property => property.AsWriteOnly())
+                .AddMethod("Format", typeof(void), method => method.WithParameter<int>("value"))
+                .AddMethod("Format", typeof(void), method => method.WithParameter<string>("value")))
+            .Build();
+
+        var type = Assert.Single(context.GetDiagnostics().Types);
+        var readOnly = Assert.Single(type.Members.Where(member => member.Name == "ReadOnly"));
+        var writeOnly = Assert.Single(type.Members.Where(member => member.Name == "WriteOnly"));
+        var overloads = type.Members.Where(member => member.Name == "Format").ToArray();
+
+        Assert.Contains("get:Public", readOnly.Signature);
+        Assert.Contains("set:-", readOnly.Signature);
+        Assert.Contains("get:-", writeOnly.Signature);
+        Assert.Contains("set:Public", writeOnly.Signature);
+        Assert.All(overloads, overload => Assert.Empty(overload.MetadataKeys));
+    }
+
+    [Fact]
     public void Diagnostics_Resolve_All_Clr_Access_Modifier_Shapes()
     {
         var shapes = new AccessShapes();
