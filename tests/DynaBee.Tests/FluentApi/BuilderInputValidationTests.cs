@@ -100,6 +100,43 @@ public sealed class BuilderInputValidationTests
         Assert.Throws<ArgumentNullException>(() => constructor.WithMetadata("key", null!));
     }
 
+    [Fact]
+    public void Indexer_And_Event_Builders_Validate_Accessors_Metadata_And_Handler_Shapes()
+    {
+        Assert.Throws<ArgumentException>(() => new BeeIndexerBuilder("", typeof(int), typeof(string)));
+        var indexer = new BeeIndexerBuilder("Item", typeof(int), typeof(string));
+        Assert.Throws<ArgumentNullException>(() => indexer.AddAttribute(null!));
+        Assert.Throws<ArgumentException>(() => indexer.WithMetadata("", "value"));
+        Assert.Throws<ArgumentNullException>(() => indexer.WithMetadata("key", null!));
+        indexer.WithGetter(false);
+        Assert.Throws<InvalidOperationException>(() => indexer.WithSetter(false));
+
+        Assert.Throws<ArgumentException>(() => new BeeEventBuilder("", typeof(Action)));
+        var @event = new BeeEventBuilder("Changed", typeof(EventHandler));
+        Assert.Throws<ArgumentNullException>(() => @event.AddAttribute(null!));
+        Assert.Throws<ArgumentException>(() => @event.WithMetadata("", "value"));
+        Assert.Throws<ArgumentNullException>(() => @event.WithMetadata("key", null!));
+        Assert.Same(@event, @event
+            .WithAccess(MethodAccessModifier.Private)
+            .AddAttribute<ObsoleteAttribute>("event")
+            .WithMetadata("key", "value"));
+
+        Assert.Throws<ArgumentException>(() => new BeeAssemblyBuilder("DynaBee.Tests.InvalidEvent")
+            .AddClass("Invalid", type => type.AddEvent("Changed", typeof(string)))
+            .Build());
+
+        var context = new BeeAssemblyBuilder("DynaBee.Tests.PrivateEvent")
+            .AddClass("Events", type => type.AddEvent<EventHandler>("Changed", builder => builder
+                .WithAccess(MethodAccessModifier.Private)
+                .AddAttribute<ObsoleteAttribute>("event")))
+            .Build();
+        var generatedEvent = context.GetClrType("Events").GetEvent("Changed", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Assert.Equal("event", generatedEvent.GetCustomAttribute<ObsoleteAttribute>()!.Message);
+        Assert.True(generatedEvent.GetAddMethod(true)!.IsPrivate);
+        Assert.True(generatedEvent.GetRemoveMethod(true)!.IsPrivate);
+    }
+
     public class OverrideContract
     {
         public virtual int Value { get; set; }

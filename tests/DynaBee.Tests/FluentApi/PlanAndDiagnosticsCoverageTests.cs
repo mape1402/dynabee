@@ -162,7 +162,9 @@ public sealed class PlanAndDiagnosticsCoverageTests
     [Fact]
     public void Diagnostics_Resolve_All_Clr_Access_Modifier_Shapes()
     {
-        Assert.Equal(0, new AccessShapes().ReadPrivateField());
+        var shapes = new AccessShapes();
+        shapes.SetPrivateField(1);
+        Assert.Equal(1, shapes.ReadPrivateField());
         Assert.Equal("Public", InvokeDiagnosticHelper("GetTypeAccess", typeof(AccessShapes)));
         Assert.Equal("Public", InvokeDiagnosticHelper("GetTypeAccess", typeof(AccessShapes.PublicNested)));
         Assert.Equal("Internal", InvokeDiagnosticHelper("GetTypeAccess", typeof(InternalTopLevelAccessShape)));
@@ -233,6 +235,9 @@ public sealed class PlanAndDiagnosticsCoverageTests
 
         public int ReadPrivateField()
             => PrivateField;
+
+        public void SetPrivateField(int value)
+            => PrivateField = value;
 
         public class PublicNested { }
         internal class InternalNested { }
